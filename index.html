@@ -339,7 +339,7 @@
 
 <script>
 /* ================= 数据模型 ================= */
-const STORE_KEY = 'zhixue-naotu-v2';
+const STORE_KEY = 'zhixue-naotu-v4';
 let DB = load() || {
   subjects: {},   // id -> {id,name,color}
   maps: {},       // id -> {id,subjectId,title,rootNodeId}
@@ -362,7 +362,7 @@ const TYPE_COLOR={topic:'#6366f1',example:'#16a34a',card:'#d97706'};
 const TYPE_NAME={topic:'知识点',example:'例题',card:'记忆卡片'};
 
 /* ================= 状态 ================= */
-let state={subject:null,map:null,view:'todayView',selected:null,pan:{x:60,y:60},zoom:1.2,dragging:false,startX:0,startY:0,panOX:0,panOY:0,cardQueue:[],cardIdx:0,showAnswer:false};
+let state={subject:null,map:null,view:'mapView',selected:null,vb:null,dragging:false,startX:0,startY:0,startVB:null,cardQueue:[],cardIdx:0,showAnswer:false};
 
 /* ================= 视图切换 ================= */
 const VIEW_IDS=['todayView','mapView','wrongView','cardView'];
@@ -392,7 +392,7 @@ function renderSubjects(){
     div.style.setProperty('--sc',s.color);
     const cnt=Object.values(DB.maps).filter(m=>m.subjectId===s.id).length;
     div.innerHTML=`<span class="bar"></span><span class="name">${esc(s.name)}</span><span class="cnt">${cnt}图</span>`;
-    div.onclick=()=>{state.subject=s.id;const maps=Object.values(DB.maps).filter(m=>m.subjectId===s.id);state.map=maps.length?maps[0].id:null;state.selected=null;renderSubjects();renderMaps();if(state.map)renderMap();else{closeEditor();}};
+    div.onclick=()=>{state.subject=s.id;const maps=Object.values(DB.maps).filter(m=>m.subjectId===s.id);state.map=maps.length?maps[0].id:null;state.selected=null;state.vb=null;renderSubjects();renderMaps();if(state.map)renderMap();else{closeEditor();}};
     box.appendChild(div);
   });
 }
@@ -406,6 +406,14 @@ document.getElementById('addSubjectBtn').onclick=()=>{
 
 /* ================= 思维导图列表 ================= */
 function renderMaps(){
+  if(!state.subject){
+    const ids=Object.keys(DB.subjects);
+    if(ids.length){
+      state.subject=ids[0];
+      const maps=Object.values(DB.maps).filter(m=>m.subjectId===state.subject);
+      if(maps.length)state.map=maps[0].id;
+    }
+  }
   const box=document.getElementById('mapItems');
   box.innerHTML='';
   if(!state.subject){box.innerHTML='<div style="font-size:12px;color:#9ca3af;padding:4px">先选择科目</div>';document.getElementById('mapList').querySelector('.add-map-btn').style.display='none';return;}
@@ -421,7 +429,7 @@ function renderMaps(){
         if(t&&t.trim()){m.title=t.trim();save();renderMaps();renderMap();}
         return;
       }
-      state.map=m.id;state.selected=null;renderMaps();switchView('mapView');renderMap();
+      state.map=m.id;state.selected=null;state.vb=null;renderMaps();switchView('mapView');renderMap();
     };
     box.appendChild(d);
   });
@@ -432,7 +440,7 @@ document.getElementById('addMapBtn').onclick=()=>{
   if(!title||!title.trim())return;
   const id=mid();
   DB.maps[id]={id,subjectId:state.subject,title:title.trim(),rootNodeId:null};
-  state.map=id;state.selected=null;
+  state.map=id;state.selected=null;state.vb=null;
   save();renderMaps();switchView('mapView');renderMap();
 };
 
@@ -442,27 +450,31 @@ function nodeChildren(id){
   return (n.children||[]).map(c=>DB.nodes[c]).filter(Boolean);
 }
 let layoutCache={};
-const NODE_W=210, NODE_H=60, GAP_X=70, GAP_Y=34;
+const NODE_W=210, NODE_H=60, GAP_X=70, GAP_Y=34, V_STEP=NODE_H+GAP_Y;
+function visibleChildren(id){
+  const n=DB.nodes[id];if(!n||n.collapsed)return [];
+  return (n.children||[]).map(c=>DB.nodes[c]).filter(Boolean);
+}
 function layoutTree(rootId){
   layoutCache={};
   const depth=nodeDepth(rootId);
   function walk(id,level,x,parentX){
     const n=DB.nodes[id];if(!n)return;
     layoutCache[id]={x,y:0,level,parentX};
-    const kids=nodeChildren(id);
+    const kids=visibleChildren(id);
     if(kids.length===0)return;
     kids.forEach((k,i)=>walk(k.id,level+1,x+1,k.id));
   }
   walk(rootId,0,0,null);
-  // assign y by post-order
+  // assign y by post-order, leaf height = 1
   function assignY(id){
-    const kids=nodeChildren(id);
-    if(kids.length===0){layoutCache[id].y=(layoutCache[id].y||0);return 0;}
+    const kids=visibleChildren(id);
+    if(kids.length===0){layoutCache[id].y=0;return 1;}
     let total=0;
-    const ys=[];
-    kids.forEach(k=>{const h=assignY(k.id);ys.push(h);total+=h;});
+    const hs=[];
+    kids.forEach(k=>{const h=assignY(k.id);hs.push(h);total+=h;});
     let acc= -total/2;
-    kids.forEach((k,i)=>{layoutCache[k.id].y=acc+ys[i]/2;acc+=ys[i];});
+    kids.forEach((k,i)=>{layoutCache[k.id].y=acc+hs[i]/2;acc+=hs[i];});
     layoutCache[id].y=0;
     return total;
   }
@@ -480,35 +492,24 @@ function renderMap(){
   const map=DB.maps[state.map];
   tb.style.display='flex';lg.style.display='flex';
   document.getElementById('mtTitle').textContent=map.title;
-  if(!map.rootNodeId||!DB.nodes[map.rootNodeId]){
-    svg.innerHTML='';
-    return;
-  }
-  const rootId=map.rootNodeId;
-  const {maxLevel}=layoutTree(rootId);
-  const treeW=maxLevel*NODE_W+(maxLevel)*GAP_X+NODE_W;
-  const treeH=treeHeight(rootId)*NODE_H+treeCount(rootId)*GAP_Y;
-  const W=Math.max(svg.clientWidth,treeW+200), H=Math.max(svg.clientHeight,treeH+120);
-  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-  svg.setAttribute('width',W);svg.setAttribute('height',H);
+  if(!map.rootNodeId||!DB.nodes[map.rootNodeId]){svg.innerHTML='';return;}
+  layoutTree(map.rootNodeId);
+  if(!state.vb)fitView();
+  svg.setAttribute('viewBox',`${state.vb.x} ${state.vb.y} ${state.vb.w} ${state.vb.h}`);
+  svg.removeAttribute('width');svg.removeAttribute('height');
   let html='<defs>'+
     '<marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#94a3b8"/></marker>'+
     '</defs>';
-  // group for pan/zoom
-  html+=`<g id="viewport" transform="translate(${state.pan.x},${state.pan.y}) scale(${state.zoom})">`;
   // edges (parent->child)
   Object.keys(layoutCache).forEach(id=>{
     const n=DB.nodes[id];if(!n)return;
     const lc=layoutCache[id];
     if(n.parentId&&layoutCache[n.parentId]){
       const p=layoutCache[n.parentId];
-      const x1=p.x*NODE_W+(p.level)*GAP_X+NODE_W, y1=p.y+ 0;
-      const x2=lc.x*NODE_W+(lc.level)*GAP_X, y2=lc.y;
-      // convert to absolute: x= level*... Actually our layout x is depth count.
       const ax1=p.x*NODE_W+p.level*GAP_X+NODE_W;
-      const ay1=p.y;
+      const ay1=p.y*V_STEP;
       const ax2=lc.x*NODE_W+lc.level*GAP_X;
-      const ay2=lc.y;
+      const ay2=lc.y*V_STEP;
       const mx=(ax1+ax2)/2;
       html+=`<path d="M${ax1},${ay1} C${mx},${ay1} ${mx},${ay2} ${ax2},${ay2}" stroke="#cbd5e1" stroke-width="1.6" fill="none"/>`;
     }
@@ -518,18 +519,18 @@ function renderMap(){
     const n=DB.nodes[id];if(!n||n.mapId!==state.map||!n.links||!n.links.length)return;
     (n.links||[]).forEach(tid=>{
       if(!DB.nodes[tid]||DB.nodes[tid].mapId!==state.map)return;
-      if(id<tid)return; // draw once
+      if(id<tid)return;
       const a=layoutCache[id],b=layoutCache[tid];
       if(!a||!b)return;
-      const ax=a.x*NODE_W+a.level*GAP_X+NODE_W/2, ay=a.y;
-      const bx=b.x*NODE_W+b.level*GAP_X+NODE_W/2, by=b.y;
+      const ax=a.x*NODE_W+a.level*GAP_X+NODE_W/2, ay=a.y*V_STEP;
+      const bx=b.x*NODE_W+b.level*GAP_X+NODE_W/2, by=b.y*V_STEP;
       html+=`<path d="M${ax},${ay} Q${(ax+bx)/2},${(ay+by)/2} ${bx},${by}" stroke="#f59e0b" stroke-width="1.4" fill="none" stroke-dasharray="5,4" opacity="0.7"/>`;
     });
   });
   // nodes
   Object.keys(layoutCache).forEach(id=>{
     const n=DB.nodes[id];const lc=layoutCache[id];
-    const x=lc.x*NODE_W+lc.level*GAP_X, y=lc.y-NODE_H/2;
+    const x=lc.x*NODE_W+lc.level*GAP_X, y=lc.y*V_STEP-NODE_H/2;
     const isSel=state.selected===id;
     const isRoot=id===DB.maps[state.map].rootNodeId;
     const wrong=(n.type==='example'&&n.status==='wrong');
@@ -550,11 +551,15 @@ function renderMap(){
     if(n.links&&n.links.length){
       nodeHtml+=`<text x="${NODE_W-16}" y="${NODE_H/2+17}" font-size="10" fill="#f59e0b">⤳</text>`;
     }
+    if(nodeChildren(id).length>0){
+      const tri=n.collapsed?'▸':'▾';
+      nodeHtml+=`<text x="${NODE_W-16}" y="${NODE_H/2+2}" font-size="12" fill="#64748b" text-anchor="middle">${tri}</text>`;
+    }
     nodeHtml+='</g>';
     html+=nodeHtml;
   });
-  html+='</g>';
   svg.innerHTML=html;
+  updateZoomLabel();
   // bind node events
   Object.keys(layoutCache).forEach(id=>{
     const g=document.getElementById('nd-'+id);
@@ -563,8 +568,10 @@ function renderMap(){
       e.stopPropagation();
       const n=DB.nodes[id];
       if(n.type==='example'&&n.answer){
-        // show answer popup (mark done/wrong)
         openResult(id);
+      }else if(nodeChildren(id).length>0){
+        n.collapsed=!n.collapsed;
+        save();renderMap();
       }else{
         selectNode(id);
       }
@@ -574,34 +581,77 @@ function renderMap(){
 function short(s,n){s=s||'';return s.length>n?s.slice(0,n-1)+'…':s;}
 function treeHeight(id){let h=1;nodeChildren(id).forEach(c=>h+=treeHeight(c.id));return h;}
 function treeCount(id){let c=1;nodeChildren(id).forEach(k=>c+=treeCount(k.id));return c;}
+function fitView(){
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;
+  Object.keys(layoutCache).forEach(id=>{
+    const lc=layoutCache[id];
+    const x=lc.x*NODE_W+lc.level*GAP_X, y=lc.y*V_STEP-NODE_H/2;
+    minX=Math.min(minX,x);maxX=Math.max(maxX,x+NODE_W);
+    minY=Math.min(minY,y);maxY=Math.max(maxY,y+NODE_H);
+  });
+  if(minX===1e9){state.vb={x:0,y:0,w:800,h:500};return;}
+  const pad=46;
+  state.vb={x:minX-pad,y:minY-pad,w:(maxX-minX)+pad*2,h:(maxY-minY)+pad*2};
+}
+function updateZoomLabel(){const s=document.getElementById('mapCanvas');document.getElementById('zoomLevel').textContent=Math.round(100*s.clientWidth/state.vb.w)+'%';}
+function zoomAt(cx,cy,f){
+  const s=document.getElementById('mapCanvas');
+  const r=s.getBoundingClientRect();
+  const px=(cx-r.left)/r.width, py=(cy-r.top)/r.height;
+  const cx2=state.vb.x+px*state.vb.w, cy2=state.vb.y+py*state.vb.h;
+  state.vb.w*=f;state.vb.h*=f;
+  state.vb.x=cx2-px*state.vb.w;state.vb.y=cy2-py*state.vb.h;
+  renderMap();updateZoomLabel();
+}
 
 /* pan & zoom */
 const svg=document.getElementById('mapCanvas');
 svg.addEventListener('mousedown',e=>{
   if(e.target.closest('#editor'))return;
   state.dragging=true;state.startX=e.clientX;state.startY=e.clientY;
-  const vb=svg.viewBox.baseVal;
-  state.panOX=state.pan.x;state.panOY=state.pan.y;
+  state.startVB={x:state.vb.x,y:state.vb.y,w:state.vb.w,h:state.vb.h};
   svg.classList.add('grabbing');
 });
 window.addEventListener('mousemove',e=>{
-  if(!state.dragging)return;
+  if(!state.dragging||!state.startVB)return;
   const dx=e.clientX-state.startX,dy=e.clientY-state.startY;
-  state.pan.x=state.panOX+dx;state.pan.y=state.panOY+dy;
+  const cw=svg.clientWidth||1, ch=svg.clientHeight||1;
+  state.vb.x=state.startVB.x-dx*state.startVB.w/cw;
+  state.vb.y=state.startVB.y-dy*state.startVB.h/ch;
   renderMap();
 });
 window.addEventListener('mouseup',()=>{state.dragging=false;svg.classList.remove('grabbing');});
+function panBy(dx,dy){
+  const cw=svg.clientWidth||1, ch=svg.clientHeight||1;
+  state.vb.x+=dx*state.vb.w/cw;
+  state.vb.y+=dy*state.vb.h/ch;
+  renderMap();updateZoomLabel();
+}
 svg.addEventListener('wheel',e=>{
   e.preventDefault();
-  const factor=e.deltaY>0?0.9:1.1;
-  state.zoom=Math.min(2.5,Math.max(0.4,state.zoom*factor));
-  document.getElementById('zoomLevel').textContent=Math.round(state.zoom*100)+'%';
-  renderMap();
+  if(e.ctrlKey){
+    // 捏合缩放（Chrome/触控板）
+    zoomAt(e.clientX,e.clientY,e.deltaY>0?1.1:0.9);
+  }else{
+    // 双指滑动/滚轮：平移画布
+    panBy(e.deltaX||0,e.deltaY||0);
+  }
 },{passive:false});
-document.getElementById('btnZoomIn').onclick=()=>{state.zoom=Math.min(2.5,state.zoom*1.2);updateZoom();};
-document.getElementById('btnZoomOut').onclick=()=>{state.zoom=Math.max(0.4,state.zoom/1.2);updateZoom();};
-function updateZoom(){document.getElementById('zoomLevel').textContent=Math.round(state.zoom*100)+'%';renderMap();}
-document.getElementById('btnFit').onclick=()=>{state.pan={x:60,y:60};state.zoom=1.2;updateZoom();};
+// Safari 捏合缩放（gesture 事件）
+let gesScale=1;
+svg.addEventListener('gesturestart',e=>{e.preventDefault();gesScale=1;},{passive:false});
+svg.addEventListener('gesturechange',e=>{
+  e.preventDefault();
+  if(e.scale&&gesScale>0){
+    const f=gesScale/e.scale;
+    zoomAt(svg.clientWidth/2,svg.clientHeight/2,f);
+  }
+  gesScale=e.scale||1;
+},{passive:false});
+svg.addEventListener('gestureend',e=>{e.preventDefault();gesScale=1;},{passive:false});
+document.getElementById('btnZoomIn').onclick=()=>{zoomAt(svg.clientWidth/2,svg.clientHeight/2,0.85);};
+document.getElementById('btnZoomOut').onclick=()=>{zoomAt(svg.clientWidth/2,svg.clientHeight/2,1.18);};
+document.getElementById('btnFit').onclick=()=>{state.vb=null;renderMap();};
 
 /* ================= 节点编辑 ================= */
 const editor=document.getElementById('editor');
@@ -619,11 +669,13 @@ function selectNode(id){
   fillLinkTarget();
   // position editor
   const lc=layoutCache[id];
-  if(lc){
-    const x=(lc.x*NODE_W+lc.level*GAP_X)*state.zoom+state.pan.x+NODE_W;
-    const y=(lc.y)*state.zoom+state.pan.y-NODE_H/2;
-    editor.style.left=Math.min(x,window.innerWidth-360)+'px';
-    editor.style.top=Math.min(Math.max(y,10),window.innerHeight-120)+'px';
+  if(lc&&state.vb){
+    const r=svg.getBoundingClientRect();
+    const nx=(lc.x*NODE_W+lc.level*GAP_X+NODE_W/2-state.vb.x)/state.vb.w;
+    const ny=(lc.y-state.vb.y)/state.vb.h;
+    const x=r.left+nx*r.width+8, y=r.top+ny*r.height-34;
+    editor.style.left=Math.min(Math.max(x,8),window.innerWidth-368)+'px';
+    editor.style.top=Math.min(Math.max(y,8),window.innerHeight-200)+'px';
   }else{
     editor.style.left='60%';editor.style.top='20%';
   }
@@ -728,7 +780,7 @@ function renderLinkList(){
     d.querySelector('.ln').onclick=()=>{
       // jump: switch to that map & node
       state.map=t.mapId;state.subject=DB.maps[t.mapId].subjectId;
-      state.selected=t.id;
+      state.selected=t.id;state.vb=null;
       renderSubjects();renderMaps();switchView('mapView');renderMap();
       selectNode(t.id);
     };
@@ -799,7 +851,7 @@ function renderWrong(){
     ${n.answer?`<div class="ci-p" style="color:#b45309">答案：${esc(n.answer)}</div>`:''}`;
     d.onclick=()=>{
       // jump to map & node
-      state.map=n.mapId;state.subject=DB.maps[n.mapId].subjectId;state.selected=n.id;
+      state.map=n.mapId;state.subject=DB.maps[n.mapId].subjectId;state.selected=n.id;state.vb=null;
       renderSubjects();renderMaps();switchView('mapView');renderMap();
       selectNode(n.id);
       toast('已跳转到对应导图位置');
@@ -847,9 +899,9 @@ function renderCard(){
     <div class="flashcard" id="fcCard">
       <span class="fc-tag">${esc(mp?mp.title:'')}${overdue?' · 已到期':''}</span>
       <div class="fc-q">${esc(n.title||'')}</div>
-      ${n.content?`<div class="fc-a">${esc(n.content)}</div>`:''}
-      ${state.showAnswer?`<div class="fc-a" style="border-top:2px solid #fde68a;background:#fffbeb">${esc(n.answer||'(无答案)')}</div>`:''}
-      <div class="hint">点击卡片${state.showAnswer?'':'显示答案'}</div>
+      ${state.showAnswer?`<div class="fc-a">${esc(n.content||'(无内容)')}</div>`:''}
+      ${state.showAnswer&&n.answer?`<div class="fc-a" style="border-top:2px solid #fde68a;background:#fffbeb">${esc(n.answer)}</div>`:''}
+      <div class="hint">${state.showAnswer?'':'点击卡片或按钮显示关键内容'}</div>
     </div>
     <div class="fc-controls" id="fcCtrl">
       ${state.showAnswer?`
@@ -912,7 +964,7 @@ function renderToday(){
     const mp=DB.maps[n.mapId];
     const li=document.createElement('li');
     li.innerHTML=`<span class="st" style="background:#dc2626"></span><span class="nm">${esc(mp?mp.title+' · ':'')}${esc(n.title)}</span><span class="due">错题</span>`;
-    li.onclick=()=>{state.map=n.mapId;state.subject=DB.maps[n.mapId].subjectId;state.selected=n.id;renderSubjects();renderMaps();switchView('mapView');renderMap();selectNode(n.id);};
+    li.onclick=()=>{state.map=n.mapId;state.subject=DB.maps[n.mapId].subjectId;state.selected=n.id;state.vb=null;renderSubjects();renderMaps();switchView('mapView');renderMap();selectNode(n.id);};
     wul.appendChild(li);
   });
   wBox.appendChild(wul);
@@ -939,8 +991,8 @@ document.getElementById('importFile').onchange=e=>{
       DB=data;save();
       // recompute max uid
       Object.keys(DB.nodes).forEach(k=>{const m=/^n(\d+)$/.exec(k);if(m)uid=Math.max(uid,parseInt(m[1])+1);});
-      state.subject=Object.keys(DB.subjects)[0]||null;state.map=state.subject?Object.values(DB.maps).find(m=>m.subjectId===state.subject)?.id:null;
-      renderSubjects();renderMaps();switchView('todayView');
+      state.subject=Object.keys(DB.subjects)[0]||null;state.map=state.subject?Object.values(DB.maps).find(m=>m.subjectId===state.subject)?.id:null;state.vb=null;
+      renderSubjects();renderMaps();switchView('mapView');
       toast('导入成功');
     }catch(err){toast('导入失败：文件格式不正确');}
   };
@@ -964,63 +1016,58 @@ function seedDemo(){
 
   /* ===== 知识块1：量词与谓词基本概念 ===== */
   const k1=mk(root,{title:'1 量词与谓词基本概念'});
-  mk(k1,{title:'个体词与谓词',content:'个体词=可独立存在的客体（李明、√2）。谓词刻画个体性质/关系。个体常项a,b,c…；个体变项x,y,z…；变项取值范围=个体域（论域）。无特殊声明时=全总个体域（宇宙一切事物）。（第五版2.1节）'});
-  mk(k1,{title:'n元谓词',content:'含n个个体词的谓词叫n元谓词：一元表示性质，二元及以上表示关系。不带个体变项的叫0元谓词，0元谓词常项都是命题。'});
-  mk(k1,{title:'全称量词 ∀',content:'∀对应“一切/所有/任意”。∀xF(x)：个体域里所有个体都有性质F。（第五版书p39）'});
-  mk(k1,{title:'存在量词 ∃',content:'∃对应“存在/至少有一个”。∃xF(x)：个体域中存在个体具有性质F。'});
+  const p1=mk(k1,{title:'个体词与谓词',content:'个体词=可独立存在的客体（李明、√2）。谓词刻画个体性质/关系。个体常项a,b,c…；个体变项x,y,z…；变项取值范围=个体域（论域）。无特殊声明时=全总个体域（宇宙一切事物）。（第五版2.1节）'});
+  const p2=mk(k1,{title:'n元谓词',content:'含n个个体词的谓词叫n元谓词：一元表示性质，二元及以上表示关系。不带个体变项的叫0元谓词，0元谓词常项都是命题。'});
+  mk(p2,{title:'例题·0元谓词符号化',type:'example',content:'用0元谓词符号化3个命题：①2是素数且是偶数 ②如果2大于3则2大于4 ③若张明比李民高、李民比赵亮高，则张明比赵亮高。（第五版例2.1）',answer:'①F(a)∧G(a) ②L(a,b)→L(a,c) ③H(a,b)∧H(b,c)→H(a,c)。设F:x是素数,G:x是偶数,L:x大于y,H:x比y高。'});
+  const p3=mk(k1,{title:'全称量词 ∀',content:'∀对应“一切/所有/任意”。∀xF(x)：个体域里所有个体都有性质F。（第五版书p39）'});
+  mk(p3,{title:'例题·∀xN(x)含义',type:'example',content:'N(x)：计算机x被连接到网络，论域=校园内所有计算机。∀xN(x)是什么意思？（Rosen例11）',answer:'校园里的每一台计算机都连接到网络。'});
+  const p4=mk(k1,{title:'存在量词 ∃',content:'∃对应“存在/至少有一个”。∃xF(x)：个体域中存在个体具有性质F。'});
+  mk(p4,{title:'例题·∃xP(x)真值',type:'example',content:'P(x)：“x>3”，论域为实数。∃xP(x)的真值？（Rosen例13）',answer:'为真。因为x>3有时为真（如x=4）。'});
+  mk(p4,{title:'PPT(2)(3)(6)·翻译',type:'example',content:'①2大于3当且仅当2大于4 ②一切事物都是发展变化的 ③存在会说话的机器人。',answer:'①G(2,3)↔G(2,4) ②∀xD(x)，D:x发展变化，全总论域 ③∃x(R(x)∧T(x))，存在A是B用∧'});
   mk(k1,{title:'量词优先级',content:'量词∀∃比所有逻辑联结词优先级都高。∀xP(x)∨Q(x) 表示 (∀xP(x))∨Q(x)。（Rosen书p40）'});
-  mk(k1,{title:'例题·0元谓词符号化',type:'example',content:'用0元谓词符号化3个命题：①2是素数且是偶数 ②如果2大于3则2大于4 ③若张明比李民高、李民比赵亮高，则张明比赵亮高。（第五版例2.1）',answer:'①F(a)∧G(a) ②L(a,b)→L(a,c) ③H(a,b)∧H(b,c)→H(a,c)。设F:x是素数,G:x是偶数,L:x大于y,H:x比y高。'});
-  mk(k1,{title:'例题·∀xN(x)含义',type:'example',content:'N(x)：计算机x被连接到网络，论域=校园内所有计算机。∀xN(x)是什么意思？（Rosen例11）',answer:'校园里的每一台计算机都连接到网络。'});
-  mk(k1,{title:'例题·∃xP(x)真值',type:'example',content:'P(x)：“x>3”，论域为实数。∃xP(x)的真值？（Rosen例13）',answer:'为真。因为x>3有时为真（如x=4）。'});
-  mk(k1,{title:'PPT(2)(3)(6)·翻译',type:'example',content:'①2大于3当且仅当2大于4 ②一切事物都是发展变化的 ③存在会说话的机器人。',answer:'①G(2,3)↔G(2,4) ②∀xD(x)，D:x发展变化，全总论域 ③∃x(R(x)∧T(x))，存在A是B用∧'});
 
   /* ===== 知识块2：自然语言→谓词公式翻译 ===== */
   const k2=mk(root,{title:'2 翻译：∀配→，∃配∧'});
-  mk(k2,{title:'特性谓词',content:'在全总个体域下翻译“人”等概念必须引入特性谓词分离对象：“所有人都要死”=∀x(M(x)→F(x))；“有的人活百岁以上”=∃x(M(x)∧G(x))。（第五版书p39）'});
-  mk(k2,{title:'黄金法则',type:'card',content:'所有A都是B → ∀x(A(x)→B(x))\n存在A是B → ∃x(A(x)∧B(x))',due:todayStr(),interval:1});
-  mk(k2,{title:'为什么不能换',content:'∀x(S(x)∧C(x))表示“所有人都是班学生且学过微积分”太夸张；∃x(S(x)→M(x))当论域有非班学生时自动为真，变废话。（Rosen例23/24）'});
-  mk(k2,{title:'例题·凡有理数可表成分数',type:'example',content:'翻译“凡有理数均可表成分数”与“有的有理数是整数”。分(a)个体域=有理数 (b)个体域=实数(引入R(x):x是有理数) (c)全总个体域。（第五版例2.2）',answer:'(a)不用特性谓词：∀xF(x)、∃xG(x) (b)(c)：∀x(R(x)→F(x))、∃x(R(x)∧G(x))'});
-  mk(k2,{title:'例题·班上学过微积分',type:'example',content:'表达“班上的每个学生都学过微积分”。论域=班上学生：∀xC(x)；论域=所有人需引入S(x):x在这个班上。（Rosen例23）',answer:'∀x(S(x)→C(x))。不能写成∀x(S(x)∧C(x))。'});
-  mk(k2,{title:'例题·学生去过墨西哥',type:'example',content:'表达“这个班上的某个学生去过墨西哥”。M(x):去过墨西哥，S(x):班上的学生，论域所有人。（Rosen例24）',answer:'∃x(S(x)∧M(x))。不能写∃x(S(x)→M(x))：论域有非班学生时假→假自动为真。第二句“每人去过加拿大或墨西哥”：∀x(S(x)→(C(x)∨M(x)))'});
-  mk(k2,{title:'例题·狮子例子',type:'example',content:'前提“所有狮子都凶猛”“有些狮子不喝咖啡”，结论“有些凶猛动物不喝咖啡”。P:x是狮子，Q:凶猛，R:喝咖啡，论域所有动物。（Rosen例26）',answer:'∀x(P(x)→Q(x))；∃x(P(x)∧¬R(x))；∃x(Q(x)∧¬R(x))。'});
-  mk(k2,{title:'PPT(1)(4)(9)·翻译',type:'example',content:'①除非李健是东北人，否则他一定怕冷 ②凡有理数都可表示成分数 ③过平面上两点有且仅有一条直线通过。',answer:'①¬N(a)→C(a)，N:东北人,C:怕冷 ②∀x(R(x)→F(x)) ③∀x∀y(P(x)∧P(y)∧x≠y→∃!z(L(z)∧T(z,x,y)))'});
+  const p5=mk(k2,{title:'特性谓词',content:'在全总个体域下翻译“人”等概念必须引入特性谓词分离对象：“所有人都要死”=∀x(M(x)→F(x))；“有的人活百岁以上”=∃x(M(x)∧G(x))。（第五版书p39）'});
+  mk(p5,{title:'例题·凡有理数可表成分数',type:'example',content:'翻译“凡有理数均可表成分数”与“有的有理数是整数”。分(a)个体域=有理数 (b)个体域=实数(引入R(x):x是有理数) (c)全总个体域。（第五版例2.2）',answer:'(a)不用特性谓词：∀xF(x)、∃xG(x) (b)(c)：∀x(R(x)→F(x))、∃x(R(x)∧G(x))'});
+  mk(p5,{title:'例题·班上学过微积分',type:'example',content:'表达“班上的每个学生都学过微积分”。论域=班上学生：∀xC(x)；论域=所有人需引入S(x):x在这个班上。（Rosen例23）',answer:'∀x(S(x)→C(x))。不能写成∀x(S(x)∧C(x))。'});
+  mk(p5,{title:'例题·学生去过墨西哥',type:'example',content:'表达“这个班上的某个学生去过墨西哥”。M(x):去过墨西哥，S(x):班上的学生，论域所有人。（Rosen例24）',answer:'∃x(S(x)∧M(x))。不能写∃x(S(x)→M(x))：论域有非班学生时假→假自动为真。第二句“每人去过加拿大或墨西哥”：∀x(S(x)→(C(x)∨M(x)))'});
+  mk(p5,{title:'例题·狮子例子',type:'example',content:'前提“所有狮子都凶猛”“有些狮子不喝咖啡”，结论“有些凶猛动物不喝咖啡”。P:x是狮子，Q:凶猛，R:喝咖啡，论域所有动物。（Rosen例26）',answer:'∀x(P(x)→Q(x))；∃x(P(x)∧¬R(x))；∃x(Q(x)∧¬R(x))。'});
+  mk(p5,{title:'PPT(1)(4)(9)·翻译',type:'example',content:'①除非李健是东北人，否则他一定怕冷 ②凡有理数都可表示成分数 ③过平面上两点有且仅有一条直线通过。',answer:'①¬N(a)→C(a)，N:东北人,C:怕冷 ②∀x(R(x)→F(x)) ③∀x∀y(P(x)∧P(y)∧x≠y→∃!z(L(z)∧T(z,x,y)))'});
+  const p6=mk(k2,{title:'为什么不能换',content:'∀x(S(x)∧C(x))表示“所有人都是班学生且学过微积分”太夸张；∃x(S(x)→M(x))当论域有非班学生时自动为真，变废话。（Rosen例23/24）'});
 
   /* ===== 知识块3：量词否定 ===== */
   const k3=mk(root,{title:'3 量词否定与德·摩根律'});
-  mk(k3,{title:'量词否定等值式',content:'“不是所有”=“存在不”：¬∀xA(x)⇔∃x¬A(x)；“不存在”=“所有都不”：¬∃xA(x)⇔∀x¬A(x)。称量词的德·摩根律。（第五版定理2.1 / Rosen表2）'});
-  mk(k3,{title:'量词德·摩根律',type:'card',content:'¬∀xA(x) ⇔ ∃x¬A(x)\n¬∃xA(x) ⇔ ∀x¬A(x)',due:todayStr(),interval:1});
-  mk(k3,{title:'蕴涵式与否定',content:'¬∀x(P(x)→Q(x)) ⇔ ∃x(P(x)∧¬Q(x))。先把¬移过量词，再对蕴涵取否定 ¬(p→q)⇔p∧¬q。（Rosen例22）'});
-  mk(k3,{title:'例题·否定词的翻译',type:'example',content:'翻译（全总个体域）：①凡偶数均能被2整除 ②存在着偶素数 ③没有不吃饭的人 ④素数不全是奇数。（第五版例2.4）',answer:'①∀x(F(x)→G(x)) ②∃x(F(x)∧G(x)) ③¬∃x(M(x)∧¬F(x))⇔∀x(M(x)→F(x)) ④¬∀x(F(x)→G(x))⇔∃x(F(x)∧¬G(x))'});
-  mk(k3,{title:'例题·不是所有人都爱吃辣椒',type:'example',content:'“不是所有人都爱吃辣椒”，4种符号化哪个正确？（第五版例2.15）',answer:'(2)(4)正确：¬∀x(F(x)→G(x)) 与 ∃x(F(x)∧¬G(x))。(1)错：∀x(F∧G)表示“所有人是人且爱吃辣椒”；(3)错：¬∃x(F∧G)表示“没有人爱吃辣椒”。'});
-  mk(k3,{title:'例题·证明等价',type:'example',content:'证明 ¬∀x(P(x)→Q(x)) 与 ∃x(P(x)∧¬Q(x)) 逻辑等价。（Rosen例22）',answer:'¬∀x(P→Q)⇔∃x¬(P→Q)（量词德摩根）⇔∃x(P∧¬Q)（蕴涵否定）。即作业2第3题(2)：¬[∀x∃y(P→Q)]⇔∃x∀y(P∧¬Q)'});
-  mk(k3,{title:'例题·诚实政治家',type:'example',content:'“有一个诚实的政治家”与“所有美国人都吃芝士汉堡”的否定。（Rosen例20）',answer:'∃xH(x)否定→∀x¬H(x)（“每个政治家都不诚实”）；∀xC(x)否定→∃x¬C(x)（“一些美国人不吃芝士汉堡”）'});
-  mk(k3,{title:'PPT(5)(7)(3)·否定',type:'example',content:'①没有不能表示成分数的有理数 ②不存在比所有火车快的汽车 ③求¬[∃x∃y¬P(x,y)∧∀x∀yQ(x,y)]的否定式。',answer:'①¬∃x(R(x)∧¬F(x))⇔∀x(R(x)→F(x)) ②¬∃x(C(x)∧∀y(T(y)→F(x,y))) ③∀x∀yP(x,y)∨∃x∃y¬Q(x,y)'});
+  const p7=mk(k3,{title:'量词否定等值式',content:'“不是所有”=“存在不”：¬∀xA(x)⇔∃x¬A(x)；“不存在”=“所有都不”：¬∃xA(x)⇔∀x¬A(x)。称量词的德·摩根律。（第五版定理2.1 / Rosen表2）'});
+  mk(p7,{title:'例题·否定词的翻译',type:'example',content:'翻译（全总个体域）：①凡偶数均能被2整除 ②存在着偶素数 ③没有不吃饭的人 ④素数不全是奇数。（第五版例2.4）',answer:'①∀x(F(x)→G(x)) ②∃x(F(x)∧G(x)) ③¬∃x(M(x)∧¬F(x))⇔∀x(M(x)→F(x)) ④¬∀x(F(x)→G(x))⇔∃x(F(x)∧¬G(x))'});
+  mk(p7,{title:'例题·不是所有人都爱吃辣椒',type:'example',content:'“不是所有人都爱吃辣椒”，4种符号化哪个正确？（第五版例2.15）',answer:'(2)(4)正确：¬∀x(F(x)→G(x)) 与 ∃x(F(x)∧¬G(x))。(1)错：∀x(F∧G)表示“所有人是人且爱吃辣椒”；(3)错：¬∃x(F∧G)表示“没有人爱吃辣椒”。'});
+  mk(p7,{title:'例题·诚实政治家',type:'example',content:'“有一个诚实的政治家”与“所有美国人都吃芝士汉堡”的否定。（Rosen例20）',answer:'∃xH(x)否定→∀x¬H(x)（“每个政治家都不诚实”）；∀xC(x)否定→∃x¬C(x)（“一些美国人不吃芝士汉堡”）'});
+  mk(p7,{title:'PPT(5)(7)(3)·否定',type:'example',content:'①没有不能表示成分数的有理数 ②不存在比所有火车快的汽车 ③求¬[∃x∃y¬P(x,y)∧∀x∀yQ(x,y)]的否定式。',answer:'①¬∃x(R(x)∧¬F(x))⇔∀x(R(x)→F(x)) ②¬∃x(C(x)∧∀y(T(y)→F(x,y))) ③∀x∀yP(x,y)∨∃x∃y¬Q(x,y)'});
+  const p8=mk(k3,{title:'蕴涵式与否定',content:'¬∀x(P(x)→Q(x)) ⇔ ∃x(P(x)∧¬Q(x))。先把¬移过量词，再对蕴涵取否定 ¬(p→q)⇔p∧¬q。（Rosen例22）'});
+  mk(p8,{title:'例题·证明等价',type:'example',content:'证明 ¬∀x(P(x)→Q(x)) 与 ∃x(P(x)∧¬Q(x)) 逻辑等价。（Rosen例22）',answer:'¬∀x(P→Q)⇔∃x¬(P→Q)（量词德摩根）⇔∃x(P∧¬Q)（蕴涵否定）。即作业2第3题(2)：¬[∀x∃y(P→Q)]⇔∃x∀y(P∧¬Q)'});
 
   /* ===== 知识块4：唯一性量词∃! ===== */
   const k4=mk(root,{title:'4 唯一性量词 ∃!'});
-  mk(k4,{title:'唯一性量词定义',content:'∃!xP(x)表示“存在唯一x使P为真”（恰好一个/有且仅有一个）。可只用∀和∃表达。（Rosen书p39）'});
-  mk(k4,{title:'唯一性量词展开',type:'card',content:'∃!xP(x) ⇔ ∃x(P(x) ∧ ∀y(P(y)→y=x))\n（存在一个满足P，且任何满足P的y都等于它）',due:todayStr(),interval:1});
-  mk(k4,{title:'例题·x-1=0',type:'example',content:'∃!x(x-1=0)，论域为实数，表示什么？是真语句吗？（Rosen正文）',answer:'存在唯一的实数x使x-1=0，真，因为x=1唯一。展开：∃x((x-1=0)∧∀y((y-1=0)→y=x))'});
-  mk(k4,{title:'例题·最好的朋友',type:'example',content:'翻译“每个人恰好有一个最好的朋友”。B(x,y):y是x最好的朋友，论域所有人。（Rosen例12）',answer:'∀x∃y(B(x,y)∧∀z((z≠y)→¬B(x,z)))；或直接写 ∀x∃!y B(x,y)'});
-  mk(k4,{title:'PPT(8)(9)·唯一',type:'example',content:'①只有一个北京 ②过平面上两点有且仅有一条直线通过。',answer:'①∃!xB(x)，展开∃x(B(x)∧∀y(B(y)→y=x)) ②∀x∀y(P(x)∧P(y)∧x≠y→∃!z(L(z)∧T(z,x,y)))'});
+  const p9=mk(k4,{title:'唯一性量词定义',content:'∃!xP(x)表示“存在唯一x使P为真”（恰好一个/有且仅有一个）。可只用∀和∃表达。（Rosen书p39）'});
+  mk(p9,{title:'例题·x-1=0',type:'example',content:'∃!x(x-1=0)，论域为实数，表示什么？是真语句吗？（Rosen正文）',answer:'存在唯一的实数x使x-1=0，真，因为x=1唯一。展开：∃x((x-1=0)∧∀y((y-1=0)→y=x))'});
+  mk(p9,{title:'例题·最好的朋友',type:'example',content:'翻译“每个人恰好有一个最好的朋友”。B(x,y):y是x最好的朋友，论域所有人。（Rosen例12）',answer:'∀x∃y(B(x,y)∧∀z((z≠y)→¬B(x,z)))；或直接写 ∀x∃!y B(x,y)'});
+  mk(p9,{title:'PPT(8)(9)·唯一',type:'example',content:'①只有一个北京 ②过平面上两点有且仅有一条直线通过。',answer:'①∃!xB(x)，展开∃x(B(x)∧∀y(B(y)→y=x)) ②∀x∀y(P(x)∧P(y)∧x≠y→∃!z(L(z)∧T(z,x,y)))'});
 
   /* ===== 知识块5：有限论域消去量词 ===== */
   const k5=mk(root,{title:'5 有限论域消去量词'});
-  mk(k5,{title:'消去量词规则',content:'个体域为有限集D={a₁,…,aₙ}时：∀xA(x)⇔A(a₁)∧…∧A(aₙ)；∃xA(x)⇔A(a₁)∨…∨A(aₙ)。把一阶逻辑公式转成命题逻辑公式。（第五版书p40）'});
-  mk(k5,{title:'消去量词·卡片',type:'card',content:'有限域D={a₁..aₙ}：\n∀xA(x) ⇔ A(a₁)∧…∧A(aₙ)\n∃xA(x) ⇔ A(a₁)∨…∨A(aₙ)',due:todayStr(),interval:1});
+  const p10=mk(k5,{title:'消去量词规则',content:'个体域为有限集D={a₁,…,aₙ}时：∀xA(x)⇔A(a₁)∧…∧A(aₙ)；∃xA(x)⇔A(a₁)∨…∨A(aₙ)。把一阶逻辑公式转成命题逻辑公式。（第五版书p40）'});
+  mk(p10,{title:'例题·∀xP真值',type:'example',content:'P(x):x²<10，论域{1,2,3,4}。∀xP(x)的真值？（Rosen例15）',answer:'∀xP(x)⇔P(1)∧P(2)∧P(3)∧P(4)，因P(4):“16<10”为假，故∀xP(x)为假。'});
+  mk(p10,{title:'例题·∃xP真值',type:'example',content:'P(x):x²>10，论域{1,2,3,4}。∃xP(x)的真值？（Rosen例16）',answer:'∃xP(x)⇔P(1)∨P(2)∨P(3)∨P(4)，因P(4):“16>10”为真，故为真。'});
+  mk(p10,{title:'PPT2(1)(2)·消去量词',type:'example',content:'消去量词：①∀x∀yP(x,y) ②∃x∀yP(x,y)，论域x∈{1,2,3}，y∈{1,2}。',answer:'①P(1,1)∧P(1,2)∧P(2,1)∧P(2,2)∧P(3,1)∧P(3,2) ②[P(1,1)∧P(1,2)]∨[P(2,1)∧P(2,2)]∨[P(3,1)∧P(3,2)]'});
   mk(k5,{title:'分配律注意',content:'∀对∧可分配：∀x(P∧Q)⇔∀xP∧∀xQ；∃对∨可分配：∃x(P∨Q)⇔∃xP∨∃xQ。但∀对∨、∃对∧不分配。（Rosen书p40-41）'});
-  mk(k5,{title:'例题·∀xP真值',type:'example',content:'P(x):x²<10，论域{1,2,3,4}。∀xP(x)的真值？（Rosen例15）',answer:'∀xP(x)⇔P(1)∧P(2)∧P(3)∧P(4)，因P(4):“16<10”为假，故∀xP(x)为假。'});
-  mk(k5,{title:'例题·∃xP真值',type:'example',content:'P(x):x²>10，论域{1,2,3,4}。∃xP(x)的真值？（Rosen例16）',answer:'∃xP(x)⇔P(1)∨P(2)∨P(3)∨P(4)，因P(4):“16>10”为真，故为真。'});
-  mk(k5,{title:'PPT2(1)(2)·消去量词',type:'example',content:'消去量词：①∀x∀yP(x,y) ②∃x∀yP(x,y)，论域x∈{1,2,3}，y∈{1,2}。',answer:'①P(1,1)∧P(1,2)∧P(2,1)∧P(2,2)∧P(3,1)∧P(3,2) ②[P(1,1)∧P(1,2)]∨[P(2,1)∧P(2,2)]∨[P(3,1)∧P(3,2)]'});
 
   /* ===== 知识块6：含量词等值演算 ===== */
   const k6=mk(root,{title:'6 含量词等值演算'});
-  mk(k6,{title:'量词分配等值式',content:'∀对∧分配、∃对∨分配成立；∀对∨、∃对∧不成立（例2.10：取F:x是奇数,G:x是偶数，∀x(F∨G)真但∀xF∨∀xG假）。（第五版定理2.3）'});
-  mk(k6,{title:'量词分配律·卡片',type:'card',content:'∀x(A∧B) ⇔ ∀xA ∧ ∀xB\n∃x(A∨B) ⇔ ∃xA ∨ ∃xB',due:todayStr(),interval:1});
+  const p11=mk(k6,{title:'量词分配等值式',content:'∀对∧分配、∃对∨分配成立；∀对∨、∃对∧不成立（例2.10：取F:x是奇数,G:x是偶数，∀x(F∨G)真但∀xF∨∀xG假）。（第五版定理2.3）'});
+  mk(p11,{title:'例题·证明分配',type:'example',content:'证明 ∀x(P(x)∧Q(x)) 与 ∀xP(x)∧∀xQ(x) 逻辑等价。（Rosen例19）',answer:'两个方向：①若∀x(P∧Q)真，则每个a满足P(a)∧Q(a)，故∀xP、∀xQ都真；②反之亦然。即作业2第4题套路（证∃对∨分配）。'});
+  mk(p11,{title:'例题·xy=1的否定',type:'example',content:'表达 ∀x∃y(xy=1) 的否定，使量词前无否定词。（Rosen例14）',answer:'¬∀x∃y(xy=1)⇔∃x¬∃y(xy=1)⇔∃x∀y¬(xy=1)⇔∃x∀y(xy≠1)，即“存在x使对所有y有xy≠1”。与作业2第3题(1)思路一致。'});
+  mk(p11,{title:'PPT4/5·证明',type:'example',content:'证明：①∃x(P∨Q)⇔∃xP∨∃xQ ②¬∃x∃y(F∧G∧L)⇔∀x∀y(F∧G→¬L) ③¬∃x(N∧∀y(N→G))⇔∀x(N→∃y(N∧¬G))。',answer:'①左右互相推出，即定理2.3(2)。②¬∃x∃y⇔∀x∀y¬(F∧G∧L)⇔∀x∀y(¬(F∧G)∨¬L)⇔∀x∀y((F∧G)→¬L)。③¬∃x(N∧∀y(N→G))⇔∀x(¬N∨∃y(N∧¬G))⇔∀x(N→∃y(N∧¬G))'});
   mk(k6,{title:'前束范式',content:'所有量词移到最前、后是不含量词的谓词公式：Q₁x₁Q₂x₂…QₖxₖB。任何合式公式都存在等价的前束范式，用换名规则+定理2.1~2.3求。（第五版定义2.11）'});
-  mk(k6,{title:'例题·证明分配',type:'example',content:'证明 ∀x(P(x)∧Q(x)) 与 ∀xP(x)∧∀xQ(x) 逻辑等价。（Rosen例19）',answer:'两个方向：①若∀x(P∧Q)真，则每个a满足P(a)∧Q(a)，故∀xP、∀xQ都真；②反之亦然。即作业2第4题套路（证∃对∨分配）。'});
-  mk(k6,{title:'例题·xy=1的否定',type:'example',content:'表达 ∀x∃y(xy=1) 的否定，使量词前无否定词。（Rosen例14）',answer:'¬∀x∃y(xy=1)⇔∃x¬∃y(xy=1)⇔∃x∀y¬(xy=1)⇔∃x∀y(xy≠1)，即“存在x使对所有y有xy≠1”。与作业2第3题(1)思路一致。'});
-  mk(k6,{title:'PPT4/5·证明',type:'example',content:'证明：①∃x(P∨Q)⇔∃xP∨∃xQ ②¬∃x∃y(F∧G∧L)⇔∀x∀y(F∧G→¬L) ③¬∃x(N∧∀y(N→G))⇔∀x(N→∃y(N∧¬G))。',answer:'①左右互相推出，即定理2.3(2)。②¬∃x∃y⇔∀x∀y¬(F∧G∧L)⇔∀x∀y(¬(F∧G)∨¬L)⇔∀x∀y((F∧G)→¬L)。③¬∃x(N∧∀y(N→G))⇔∀x(¬N∨∃y(N∧¬G))⇔∀x(N→∃y(N∧¬G))'});
 
   state.subject=s1;state.map=m1;
   save();
@@ -1028,7 +1075,7 @@ function seedDemo(){
 seedDemo();
 renderSubjects();
 renderMaps();
-switchView('todayView');
+switchView('mapView');
 </script>
 </body>
 </html>
