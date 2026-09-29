@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智学脑图 · 个性化学习工具</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#ffffff; --line:#e3e8f0;
+    --ink:#1f2937; --sub:#6b7280;
+    --primary:#4f46e5; --primary-soft:#eef0ff;
+    --ok:#16a34a; --ok-soft:#e7f6ec;
+    --bad:#dc2626; --bad-soft:#fdeaea;
+    --warn:#d97706; --warn-soft:#fdf3e3;
+    --info:#0284c7; --info-soft:#e6f4fd;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none}
+  input,textarea{font-family:inherit;outline:none}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+
+  #app{display:grid;grid-template-columns:230px 1fr;grid-template-rows:52px 1fr;height:100vh}
+  /* Header */
+  header{grid-column:1/3;display:flex;align-items:center;gap:18px;padding:0 18px;background:var(--card);border-bottom:1px solid var(--line)}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:17px}
+  .logo .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#6366f1,#22d3ee);display:grid;place-items:center;color:#fff;font-size:15px}
+  nav.tabs{display:flex;gap:4px;margin-left:auto}
+  nav.tabs button{padding:8px 16px;border-radius:8px;color:var(--sub);font-weight:600;font-size:14px;transition:.15s}
+  nav.tabs button:hover{background:#f1f5f9;color:var(--ink)}
+  nav.tabs button.active{background:var(--primary);color:#fff}
+  .util{display:flex;gap:8px}
+  .util button{padding:6px 12px;border-radius:8px;background:#f1f5f9;font-size:13px;color:var(--sub);font-weight:600}
+  .util button:hover{background:#e2e8f0}
+
+  /* Sidebar */
+  aside{background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+  .side-head{padding:14px 16px 8px;font-size:12px;color:var(--sub);font-weight:700;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between}
+  .side-head button{color:var(--primary);font-weight:700;font-size:14px}
+  .subject-list{flex:1;overflow-y:auto;padding:4px 8px}
+  .subject{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:9px;cursor:pointer;margin-bottom:2px}
+  .subject:hover{background:#f1f5f9}
+  .subject.active{background:var(--primary-soft);color:var(--primary)}
+  .subject .bar{width:5px;height:18px;border-radius:3px;background:var(--sc,#6366f1)}
+  .subject .name{font-weight:600;font-size:14px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .subject .cnt{font-size:11px;color:var(--sub)}
+  .map-list{padding:8px;border-top:1px solid var(--line);overflow-y:auto;max-height:45%}
+  .map-list .ml-head{font-size:12px;color:var(--sub);font-weight:700;margin:6px 4px}
+  .map-item{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+  .map-item:hover{background:#f1f5f9}
+  .map-item.active{background:var(--primary-soft);color:var(--primary);font-weight:600}
+  .map-item .m-ico{color:var(--primary)}
+  .map-item .m-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .map-item .add{color:var(--sub);font-size:13px;opacity:0;transition:.15s}
+  .map-item:hover .add{opacity:1}
+  .add-map-btn{width:100%;padding:9px;border-radius:9px;border:1px dashed #c7d2fe;color:var(--primary);font-weight:600;font-size:13px;margin-top:6px}
+  .add-map-btn:hover{background:var(--primary-soft)}
+
+  /* Main */
+  main{overflow:hidden;display:flex;flex-direction:column}
+  .view{display:none;height:100%}
+  .view.active{display:block}
+  /* mindmap view */
+  #mapView{position:relative}
+  #mapCanvas{width:100%;height:100%;display:block;cursor:grab;background:
+    radial-gradient(#e5eaf3 1px,transparent 1px);background-size:26px 26px}
+  #mapCanvas.grabbing{cursor:grabbing}
+  .map-toolbar{position:absolute;top:14px;left:14px;display:flex;gap:8px;align-items:center;background:var(--card);padding:8px 12px;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.06);z-index:5}
+  .map-toolbar .mt-title{font-weight:700;font-size:14px}
+  .map-toolbar button{padding:6px 12px;border-radius:7px;background:#f1f5f9;font-size:13px;color:var(--sub);font-weight:600}
+  .map-toolbar button:hover{background:#e2e8f0}
+  .map-toolbar button.hl{background:var(--primary);color:#fff}
+  #zoomLevel{font-size:12px;color:var(--sub);min-width:38px;text-align:center}
+  .legend{position:absolute;bottom:14px;left:14px;background:var(--card);border-radius:10px;padding:9px 14px;font-size:12.5px;color:var(--sub);box-shadow:0 2px 12px rgba(0,0,0,.05);display:flex;gap:12px;flex-wrap:wrap;z-index:5}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .lg{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+  /* Node popup / editor */
+  .editor{position:absolute;width:330px;background:var(--card);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.16);z-index:10;overflow:hidden;display:none}
+  .editor.show{display:block}
+  .ed-head{padding:12px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line)}
+  .ed-head input{flex:1;border:none;font-size:16px;font-weight:700;background:transparent}
+  .ed-head .close{color:var(--sub);font-size:18px;line-height:1}
+  .ed-body{padding:12px 14px;max-height:52vh;overflow-y:auto}
+  .ed-field{margin-bottom:12px}
+  .ed-field label{display:block;font-size:11px;color:var(--sub);font-weight:700;margin-bottom:4px}
+  .ed-field select,.ed-field textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:13px;background:#fff;color:var(--ink)}
+  .ed-field textarea{resize:vertical;min-height:60px;font-size:14px}
+  .ed-field textarea.answer{min-height:80px;background:#fffbeb;border-color:#fde68a}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{padding:5px 10px;border-radius:7px;background:#f1f5f9;font-size:12px;color:var(--sub);font-weight:600;border:1px solid transparent}
+  .chip.active{background:var(--primary-soft);color:var(--primary);border-color:#c7d2fe}
+  .chip.bad.active{background:var(--bad-soft);color:var(--bad);border-color:#fca5a5}
+  .chip.good.active{background:var(--ok-soft);color:var(--ok);border-color:#86efac}
+  .link-edit{display:flex;gap:6px}
+  .link-edit select{flex:1;border:1px solid var(--line);border-radius:8px;padding:7px;font-size:12px}
+  .link-edit button{padding:7px 10px;border-radius:8px;background:var(--primary);color:#fff;font-size:12px;font-weight:600}
+  .link-list{margin-top:6px;display:flex;flex-direction:column;gap:4px}
+  .link-item{display:flex;align-items:center;gap:6px;background:#f8fafc;border-radius:7px;padding:5px 8px;font-size:12px}
+  .link-item .ln{flex:1;color:var(--info);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .link-item .ln:hover{text-decoration:underline}
+  .link-item .rm{color:var(--bad);font-size:14px}
+  .ed-actions{display:flex;gap:8px;margin-top:4px}
+  .ed-actions button{flex:1;padding:9px;border-radius:9px;font-size:13px;font-weight:700}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-ghost{background:#f1f5f9;color:var(--sub)}
+  .btn-bad{background:var(--bad);color:#fff}
+  .ed-foot{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px}
+  .ed-foot button{flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700}
+  .ed-foot .del{background:var(--bad-soft);color:var(--bad)}
+
+  /* example result popup */
+  .result-pop{position:fixed;inset:0;background:rgba(15,23,42,.35);display:none;align-items:center;justify-content:center;z-index:20}
+  .result-pop.show{display:flex}
+  .result-box{background:var(--card);border-radius:16px;padding:22px;width:420px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .result-box h3{margin-bottom:10px;font-size:16px}
+  .result-box .ans{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:12px;font-size:14px;line-height:1.6;margin-bottom:16px;white-space:pre-wrap}
+  .result-box .btns{display:flex;gap:10px}
+  .result-box .btns button{flex:1;padding:11px;border-radius:10px;font-size:14px;font-weight:700}
+  .btn-good{background:var(--ok);color:#fff}
+  .btn-bad2{background:var(--bad);color:#fff}
+
+  /* wrong book */
+  #wrongView,#cardView,#todayView{overflow-y:auto;padding:26px 30px}
+  .page-head{max-width:900px;margin:0 auto 18px}
+  .page-head h2{font-size:20px;margin-bottom:4px}
+  .page-head p{color:var(--sub);font-size:13px}
+  .list{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+  .card-item{background:var(--card);border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.04);border:1px solid var(--line);cursor:pointer;transition:.15s}
+  .card-item:hover{border-color:#c7d2fe;box-shadow:0 4px 16px rgba(79,70,229,.08)}
+  .card-item .ci-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .card-item .tag{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:700}
+  .tag.subject{background:var(--primary-soft);color:var(--primary)}
+  .tag.map{background:#f1f5f9;color:var(--sub)}
+  .tag.wrong{background:var(--bad-soft);color:var(--bad)}
+  .card-item .ci-q{font-size:15.5px;font-weight:600}
+  .card-item .ci-p{font-size:12px;color:var(--sub);margin-top:4px;white-space:pre-wrap}
+  .empty{max-width:900px;margin:40px auto;text-align:center;color:var(--sub);padding:40px;background:var(--card);border-radius:12px;border:1px dashed var(--line)}
+
+  /* cards */
+  .card-stack{max-width:560px;margin:0 auto}
+  .flashcard{background:var(--card);border-radius:16px;padding:36px;min-height:220px;box-shadow:0 8px 30px rgba(0,0,0,.08);cursor:pointer;border:1px solid var(--line);text-align:center;display:flex;flex-direction:column;justify-content:center;position:relative}
+  .flashcard .fc-tag{position:absolute;top:16px;left:18px;font-size:11px;color:var(--sub);background:#f1f5f9;padding:3px 10px;border-radius:20px}
+  .flashcard .fc-q{font-size:19px;font-weight:700;line-height:1.5}
+  .flashcard .fc-a{font-size:15px;color:var(--ink);line-height:1.7;margin-top:10px;background:#f8fafc;border-radius:10px;padding:14px;white-space:pre-wrap}
+  .flashcard .hint{position:absolute;bottom:14px;width:100%;left:0;font-size:11px;color:#9ca3af}
+  .fc-controls{display:flex;gap:10px;margin-top:16px}
+  .fc-controls button{flex:1;padding:12px;border-radius:10px;font-size:14px;font-weight:700}
+  .fc-next{background:var(--info);color:#fff}
+  .fc-again{background:var(--bad);color:#fff}
+  .fc-done{background:var(--ok);color:#fff}
+  .fc-progress{text-align:center;font-size:12px;color:var(--sub);margin-bottom:12px}
+  .fc-filters{max-width:560px;margin:0 auto 16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .fc-filters select,.fc-filters button{padding:7px 12px;border-radius:8px;border:1px solid var(--line);font-size:12px;background:var(--card);color:var(--sub);font-weight:600}
+  .fc-filters button:hover{background:#f1f5f9}
+
+  /* today */
+  .today-grid{max-width:900px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.today-grid{grid-template-columns:1fr}}
+  .tk{background:var(--card);border-radius:12px;padding:16px;border:1px solid var(--line)}
+  .tk h3{font-size:14px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+  .tk .count{font-size:11px;color:var(--sub);font-weight:600}
+  .tk ul{list-style:none}
+  .tk li{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:13px}
+  .tk li:hover{background:#f8fafc}
+  .tk li .st{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .tk li .nm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tk li .due{font-size:11px;color:var(--warn)}
+  .done-mark{color:var(--ok)}
+
+  /* toast */
+  #toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);background:#111827;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:50}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ===== 移动端 / 手机适配 ===== */
+  @media(max-width:760px){
+    #app{grid-template-columns:1fr;grid-template-rows:52px 54px 1fr}
+    .logo .txt{display:none}
+    .logo{gap:6px}
+    nav.tabs{gap:2px}
+    nav.tabs button{padding:7px 9px;font-size:12.5px}
+    .util button{padding:5px 9px;font-size:12px}
+    .util .util-label{display:none}
+    aside{grid-row:2;flex-direction:row;align-items:center;border-right:none;border-bottom:1px solid var(--line);padding:0 10px}
+    .side-head{display:none}
+    .subject-list{display:flex;gap:8px;overflow-x:auto;flex:1;padding:4px 0}
+    .subject{flex-shrink:0;margin:0;white-space:nowrap}
+    .subject .cnt{display:none}
+    .map-list{display:none}
+    main{grid-row:3}
+    .editor{width:calc(100vw - 20px);left:10px;top:6vh}
+    .map-toolbar{top:8px;left:8px;right:8px;flex-wrap:wrap;gap:6px}
+    .map-toolbar .mt-title{width:100%}
+    .legend{left:8px;bottom:8px;right:8px;justify-content:center;gap:6px}
+    .result-box{width:calc(100vw - 40px)}
+    .fc-filters{overflow-x:auto;flex-wrap:nowrap}
+    .today-grid{grid-template-columns:1fr}
+    .page-head,.list,.today-grid,.card-stack,.fc-filters{max-width:100%;padding-left:14px;padding-right:14px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo"><span class="dot">智</span><span class="txt">智学脑图</span></div>
+    <nav class="tabs">
+      <button data-view="todayView" class="active">今日复习</button>
+      <button data-view="mapView">思维导图</button>
+      <button data-view="wrongView">错题本</button>
+      <button data-view="cardView">记忆卡片</button>
+    </nav>
+    <div class="util">
+      <button id="btnExport">导出</button>
+      <button id="btnImport">导入</button>
+      <input type="file" id="importFile" accept=".json" style="display:none">
+    </div>
+  </header>
+
+  <aside>
+    <div class="side-head">科目 <button id="addSubjectBtn">＋</button></div>
+    <div class="subject-list" id="subjectList"></div>
+    <div class="map-list" id="mapList">
+      <div class="ml-head">当前科目的思维导图</div>
+      <div id="mapItems"></div>
+      <button class="add-map-btn" id="addMapBtn">＋ 新建思维导图</button>
+    </div>
+  </aside>
+
+  <main>
+    <!-- Mindmap view -->
+    <div class="view" id="mapView">
+      <svg id="mapCanvas"></svg>
+      <div class="map-toolbar" id="mapToolbar" style="display:none">
+        <span class="mt-title" id="mtTitle">思维导图</span>
+        <button id="btnAddRoot">＋根节点</button>
+        <button id="btnZoomIn">＋</button>
+        <span id="zoomLevel">100%</span>
+        <button id="btnZoomOut">－</button>
+        <button id="btnFit">适应</button>
+      </div>
+      <div class="legend" id="mapLegend" style="display:none">
+        <span><i class="lg" style="background:#6366f1"></i>知识点</span>
+        <span><i class="lg" style="background:#16a34a"></i>例题</span>
+        <span><i class="lg" style="background:#d97706"></i>记忆卡片</span>
+        <span><i class="lg" style="background:#f59e0b"></i>错题</span>
+      </div>
+      <div class="editor" id="editor">
+        <div class="ed-head">
+          <input id="edTitle" placeholder="节点标题">
+          <button class="close" id="edClose">✕</button>
+        </div>
+        <div class="ed-body">
+          <div class="ed-field">
+            <label>类型</label>
+            <select id="edType">
+              <option value="topic">知识点</option>
+              <option value="example">例题</option>
+              <option value="card">记忆卡片</option>
+            </select>
+          </div>
+          <div class="ed-field">
+            <label>内容 / 补充</label>
+            <textarea id="edContent" placeholder="知识点原文、公式、链接到书籍页…"></textarea>
+          </div>
+          <div class="ed-field" id="edAnswerWrap">
+            <label>答案（例题点击显示）</label>
+            <textarea id="edAnswer" class="answer" placeholder="例题答案，写完保存后点击节点即可对答案"></textarea>
+          </div>
+          <div class="ed-field">
+            <label>掌握标记</label>
+            <div class="chips">
+              <button class="chip good" id="chipGood">✓ 已掌握</button>
+              <button class="chip bad" id="chipBad">✗ 标错·入错题本</button>
+            </div>
+          </div>
+          <div class="ed-field">
+            <label>双向链接（跳到其它节点）</label>
+            <div class="link-edit">
+              <select id="linkTarget"></select>
+              <button id="btnAddLink">添加</button>
+            </div>
+            <div class="link-list" id="linkList"></div>
+          </div>
+        </div>
+        <div class="ed-actions" style="padding:0 14px 8px">
+          <button class="btn-ghost" id="btnSaveNode">保存</button>
+        </div>
+        <div class="ed-foot">
+          <button class="del" id="btnDelNode">删除节点</button>
+          <button class="btn-primary" id="btnAddChild">＋ 添加子节点</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wrong book -->
+    <div class="view" id="wrongView">
+      <div class="page-head">
+        <h2>错题本</h2>
+        <p>标错的例题自动归入这里，点击题目可跳回思维导图对应位置</p>
+      </div>
+      <div class="list" id="wrongList"></div>
+    </div>
+
+    <!-- Cards -->
+    <div class="view" id="cardView">
+      <div class="fc-filters">
+        <select id="cardSubjectFilter"><option value="">全部科目</option></select>
+        <button id="btnReviewAll">复习到期卡片</button>
+        <button id="btnShowAll">浏览全部卡片</button>
+      </div>
+      <div class="card-stack" id="cardStack"></div>
+    </div>
+
+    <!-- Today -->
+    <div class="view active" id="todayView">
+      <div class="page-head">
+        <h2>今日复习</h2>
+        <p id="todayDate"></p>
+      </div>
+      <div class="today-grid" id="todayGrid"></div>
+    </div>
+  </main>
+</div>
+<div class="result-pop" id="resultPop">
+  <div class="result-box">
+    <h3 id="resTitle">例题</h3>
+    <div class="ans" id="resAnswer"></div>
+    <div class="btns">
+      <button class="btn-good" id="btnResGood">✓ 做对了</button>
+      <button class="btn-bad2" id="btnResBad">✗ 做错了</button>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+/* ================= 数据模型 ================= */
+const STORE_KEY = 'zhixue-naotu-v2';
+let DB = load() || {
+  subjects: {},   // id -> {id,name,color}
+  maps: {},       // id -> {id,subjectId,title,rootNodeId}
+  nodes: {},      // id -> {id,mapId,parentId,title,type,content,answer,status,links[],due,createdAt,children[]}
+  wrong: []       // 错题节点 id 列表
+};
+let uid = 1;
+function nid(){return 'n'+(uid++);}
+function mid(){return 'm'+(uid++);}
+function sid(){return 's'+(uid++);}
+function todayStr(){const d=new Date();return d.toISOString().slice(0,10);}
+function addDays(s,n){const d=new Date(s);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+
+function load(){try{const r=localStorage.getItem(STORE_KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
+function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(DB));}catch(e){toast('保存失败：存储空间已满');}}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
+
+const SUBJECT_COLORS=['#6366f1','#0ea5e9','#f59e0b','#10b981','#ec4899','#8b5cf6','#ef4444','#14b8a6','#f97316','#84cc16'];
+const TYPE_COLOR={topic:'#6366f1',example:'#16a34a',card:'#d97706'};
+const TYPE_NAME={topic:'知识点',example:'例题',card:'记忆卡片'};
+
+/* ================= 状态 ================= */
+let state={subject:null,map:null,view:'todayView',selected:null,pan:{x:60,y:60},zoom:1.2,dragging:false,startX:0,startY:0,panOX:0,panOY:0,cardQueue:[],cardIdx:0,showAnswer:false};
+
+/* ================= 视图切换 ================= */
+const VIEW_IDS=['todayView','mapView','wrongView','cardView'];
+function switchView(id){
+  state.view=id;
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===id));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===id));
+  if(id==='todayView')renderToday();
+  if(id==='wrongView')renderWrong();
+  if(id==='cardView')renderCardFilters();
+  if(id==='mapView')renderMap();
+}
+document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
+
+/* ================= 科目 ================= */
+function renderSubjects(){
+  const box=document.getElementById('subjectList');
+  box.innerHTML='';
+  const subs=Object.values(DB.subjects);
+  if(subs.length===0){
+    box.innerHTML='<div style="padding:16px;color:#9ca3af;font-size:13px">还没有科目，点右上角＋创建</div>';
+    return;
+  }
+  subs.forEach(s=>{
+    const div=document.createElement('div');
+    div.className='subject'+(state.subject===s.id?' active':'');
+    div.style.setProperty('--sc',s.color);
+    const cnt=Object.values(DB.maps).filter(m=>m.subjectId===s.id).length;
+    div.innerHTML=`<span class="bar"></span><span class="name">${esc(s.name)}</span><span class="cnt">${cnt}图</span>`;
+    div.onclick=()=>{state.subject=s.id;const maps=Object.values(DB.maps).filter(m=>m.subjectId===s.id);state.map=maps.length?maps[0].id:null;state.selected=null;renderSubjects();renderMaps();if(state.map)renderMap();else{closeEditor();}};
+    box.appendChild(div);
+  });
+}
+document.getElementById('addSubjectBtn').onclick=()=>{
+  const name=prompt('新科目名称（如：高等数学）：');
+  if(!name||!name.trim())return;
+  const id=sid();
+  DB.subjects[id]={id,name:name.trim(),color:SUBJECT_COLORS[Object.keys(DB.subjects).length%SUBJECT_COLORS.length]};
+  state.subject=id;state.map=null;save();renderSubjects();renderMaps();
+};
+
+/* ================= 思维导图列表 ================= */
+function renderMaps(){
+  const box=document.getElementById('mapItems');
+  box.innerHTML='';
+  if(!state.subject){box.innerHTML='<div style="font-size:12px;color:#9ca3af;padding:4px">先选择科目</div>';document.getElementById('mapList').querySelector('.add-map-btn').style.display='none';return;}
+  const maps=Object.values(DB.maps).filter(m=>m.subjectId===state.subject);
+  document.getElementById('mapList').querySelector('.add-map-btn').style.display='block';
+  maps.forEach(m=>{
+    const d=document.createElement('div');
+    d.className='map-item'+(state.map===m.id?' active':'');
+    d.innerHTML=`<span class="m-ico">🧠</span><span class="m-name">${esc(m.title)}</span><span class="add" title="重命名">✎</span>`;
+    d.onclick=e=>{
+      if(e.target.classList.contains('add')){
+        const t=prompt('重命名思维导图：',m.title);
+        if(t&&t.trim()){m.title=t.trim();save();renderMaps();renderMap();}
+        return;
+      }
+      state.map=m.id;state.selected=null;renderMaps();switchView('mapView');renderMap();
+    };
+    box.appendChild(d);
+  });
+}
+document.getElementById('addMapBtn').onclick=()=>{
+  if(!state.subject){toast('请先选择科目');return;}
+  const title=prompt('思维导图名称（如：第3章 导数）：');
+  if(!title||!title.trim())return;
+  const id=mid();
+  DB.maps[id]={id,subjectId:state.subject,title:title.trim(),rootNodeId:null};
+  state.map=id;state.selected=null;
+  save();renderMaps();switchView('mapView');renderMap();
+};
+
+/* ================= 思维导图渲染 (SVG) ================= */
+function nodeChildren(id){
+  const n=DB.nodes[id];if(!n)return [];
+  return (n.children||[]).map(c=>DB.nodes[c]).filter(Boolean);
+}
+let layoutCache={};
+const NODE_W=210, NODE_H=60, GAP_X=70, GAP_Y=34;
+function layoutTree(rootId){
+  layoutCache={};
+  const depth=nodeDepth(rootId);
+  function walk(id,level,x,parentX){
+    const n=DB.nodes[id];if(!n)return;
+    layoutCache[id]={x,y:0,level,parentX};
+    const kids=nodeChildren(id);
+    if(kids.length===0)return;
+    kids.forEach((k,i)=>walk(k.id,level+1,x+1,k.id));
+  }
+  walk(rootId,0,0,null);
+  // assign y by post-order
+  function assignY(id){
+    const kids=nodeChildren(id);
+    if(kids.length===0){layoutCache[id].y=(layoutCache[id].y||0);return 0;}
+    let total=0;
+    const ys=[];
+    kids.forEach(k=>{const h=assignY(k.id);ys.push(h);total+=h;});
+    let acc= -total/2;
+    kids.forEach((k,i)=>{layoutCache[k.id].y=acc+ys[i]/2;acc+=ys[i];});
+    layoutCache[id].y=0;
+    return total;
+  }
+  assignY(rootId);
+  return {maxLevel:nodeMaxLevel(rootId), depth};
+}
+function nodeDepth(id){let d=0,n=DB.nodes[id];while(n&&n.parentId&&DB.nodes[n.parentId]){d++;n=DB.nodes[n.parentId];}return d;}
+function nodeMaxLevel(id){let m=0;function w(i,l){if(l>m)m=l;nodeChildren(i).forEach(c=>w(c.id,l+1));}w(id,0);return m;}
+
+function renderMap(){
+  const svg=document.getElementById('mapCanvas');
+  const tb=document.getElementById('mapToolbar');
+  const lg=document.getElementById('mapLegend');
+  if(!state.map||!DB.maps[state.map]){svg.innerHTML='';tb.style.display='none';lg.style.display='none';return;}
+  const map=DB.maps[state.map];
+  tb.style.display='flex';lg.style.display='flex';
+  document.getElementById('mtTitle').textContent=map.title;
+  if(!map.rootNodeId||!DB.nodes[map.rootNodeId]){
+    svg.innerHTML='';
+    return;
+  }
+  const rootId=map.rootNodeId;
+  const {maxLevel}=layoutTree(rootId);
+  const treeW=maxLevel*NODE_W+(maxLevel)*GAP_X+NODE_W;
+  const treeH=treeHeight(rootId)*NODE_H+treeCount(rootId)*GAP_Y;
+  const W=Math.max(svg.clientWidth,treeW+200), H=Math.max(svg.clientHeight,treeH+120);
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.setAttribute('width',W);svg.setAttribute('height',H);
+  let html='<defs>'+
+    '<marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#94a3b8"/></marker>'+
+    '</defs>';
+  // group for pan/zoom
+  html+=`<g id="viewport" transform="translate(${state.pan.x},${state.pan.y}) scale(${state.zoom})">`;
+  // edges (parent->child)
+  Object.keys(layoutCache).forEach(id=>{
+    const n=DB.nodes[id];if(!n)return;
+    const lc=layoutCache[id];
+    if(n.parentId&&layoutCache[n.parentId]){
+      const p=layoutCache[n.parentId];
+      const x1=p.x*NODE_W+(p.level)*GAP_X+NODE_W, y1=p.y+ 0;
+      const x2=lc.x*NODE_W+(lc.level)*GAP_X, y2=lc.y;
+      // convert to absolute: x= level*... Actually our layout x is depth count.
+      const ax1=p.x*NODE_W+p.level*GAP_X+NODE_W;
+      const ay1=p.y;
+      const ax2=lc.x*NODE_W+lc.level*GAP_X;
+      const ay2=lc.y;
+      const mx=(ax1+ax2)/2;
+      html+=`<path d="M${ax1},${ay1} C${mx},${ay1} ${mx},${ay2} ${ax2},${ay2}" stroke="#cbd5e1" stroke-width="1.6" fill="none"/>`;
+    }
+  });
+  // backlink edges (dashed, only between nodes of same map)
+  Object.keys(DB.nodes).forEach(id=>{
+    const n=DB.nodes[id];if(!n||n.mapId!==state.map||!n.links||!n.links.length)return;
+    (n.links||[]).forEach(tid=>{
+      if(!DB.nodes[tid]||DB.nodes[tid].mapId!==state.map)return;
+      if(id<tid)return; // draw once
+      const a=layoutCache[id],b=layoutCache[tid];
+      if(!a||!b)return;
+      const ax=a.x*NODE_W+a.level*GAP_X+NODE_W/2, ay=a.y;
+      const bx=b.x*NODE_W+b.level*GAP_X+NODE_W/2, by=b.y;
+      html+=`<path d="M${ax},${ay} Q${(ax+bx)/2},${(ay+by)/2} ${bx},${by}" stroke="#f59e0b" stroke-width="1.4" fill="none" stroke-dasharray="5,4" opacity="0.7"/>`;
+    });
+  });
+  // nodes
+  Object.keys(layoutCache).forEach(id=>{
+    const n=DB.nodes[id];const lc=layoutCache[id];
+    const x=lc.x*NODE_W+lc.level*GAP_X, y=lc.y-NODE_H/2;
+    const isSel=state.selected===id;
+    const isRoot=id===DB.maps[state.map].rootNodeId;
+    const wrong=(n.type==='example'&&n.status==='wrong');
+    const fill=wrong?'#f59e0b':TYPE_COLOR[n.type]||'#6366f1';
+    const bg=wrong?'#fff7ed':(n.type==='example'?(n.status==='good'?'#f0fdf4':'#ffffff'):'#ffffff');
+    const stroke=isSel?'#111827':fill;
+    const sw=isSel?2.4:1.8;
+    let nodeHtml=`<g id="nd-${id}" transform="translate(${x},${y})" style="cursor:pointer">`;
+    nodeHtml+=`<rect width="${NODE_W}" height="${NODE_H}" rx="10" fill="${bg}" stroke="${stroke}" stroke-width="${sw}"/>`;
+    nodeHtml+=`<rect width="6" height="${NODE_H}" rx="3" fill="${fill}" opacity="0.85"/>`;
+    nodeHtml+=`<text x="18" y="${NODE_H/2-5}" font-size="15" font-weight="700" fill="${isRoot?'#4f46e5':'#1f2937'}">${short(n.title,17)}</text>`;
+    const tag=`${TYPE_NAME[n.type]}`;
+    nodeHtml+=`<text x="18" y="${NODE_H/2+16}" font-size="11" fill="#94a3b8">${tag}</text>`;
+    if(n.type==='example'&&n.status){
+      const mark=n.status==='wrong'?'✗':'✓';
+      nodeHtml+=`<text x="${NODE_W-18}" y="${NODE_H/2-2}" font-size="14" fill="${n.status==='wrong'?'#dc2626':'#16a34a'}">${mark}</text>`;
+    }
+    if(n.links&&n.links.length){
+      nodeHtml+=`<text x="${NODE_W-16}" y="${NODE_H/2+17}" font-size="10" fill="#f59e0b">⤳</text>`;
+    }
+    nodeHtml+='</g>';
+    html+=nodeHtml;
+  });
+  html+='</g>';
+  svg.innerHTML=html;
+  // bind node events
+  Object.keys(layoutCache).forEach(id=>{
+    const g=document.getElementById('nd-'+id);
+    if(!g)return;
+    g.addEventListener('click',e=>{
+      e.stopPropagation();
+      const n=DB.nodes[id];
+      if(n.type==='example'&&n.answer){
+        // show answer popup (mark done/wrong)
+        openResult(id);
+      }else{
+        selectNode(id);
+      }
+    });
+  });
+}
+function short(s,n){s=s||'';return s.length>n?s.slice(0,n-1)+'…':s;}
+function treeHeight(id){let h=1;nodeChildren(id).forEach(c=>h+=treeHeight(c.id));return h;}
+function treeCount(id){let c=1;nodeChildren(id).forEach(k=>c+=treeCount(k.id));return c;}
+
+/* pan & zoom */
+const svg=document.getElementById('mapCanvas');
+svg.addEventListener('mousedown',e=>{
+  if(e.target.closest('#editor'))return;
+  state.dragging=true;state.startX=e.clientX;state.startY=e.clientY;
+  const vb=svg.viewBox.baseVal;
+  state.panOX=state.pan.x;state.panOY=state.pan.y;
+  svg.classList.add('grabbing');
+});
+window.addEventListener('mousemove',e=>{
+  if(!state.dragging)return;
+  const dx=e.clientX-state.startX,dy=e.clientY-state.startY;
+  state.pan.x=state.panOX+dx;state.pan.y=state.panOY+dy;
+  renderMap();
+});
+window.addEventListener('mouseup',()=>{state.dragging=false;svg.classList.remove('grabbing');});
+svg.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor=e.deltaY>0?0.9:1.1;
+  state.zoom=Math.min(2.5,Math.max(0.4,state.zoom*factor));
+  document.getElementById('zoomLevel').textContent=Math.round(state.zoom*100)+'%';
+  renderMap();
+},{passive:false});
+document.getElementById('btnZoomIn').onclick=()=>{state.zoom=Math.min(2.5,state.zoom*1.2);updateZoom();};
+document.getElementById('btnZoomOut').onclick=()=>{state.zoom=Math.max(0.4,state.zoom/1.2);updateZoom();};
+function updateZoom(){document.getElementById('zoomLevel').textContent=Math.round(state.zoom*100)+'%';renderMap();}
+document.getElementById('btnFit').onclick=()=>{state.pan={x:60,y:60};state.zoom=1.2;updateZoom();};
+
+/* ================= 节点编辑 ================= */
+const editor=document.getElementById('editor');
+function closeEditor(){editor.classList.remove('show');state.selected=null;renderMap();}
+document.getElementById('edClose').onclick=closeEditor;
+function selectNode(id){
+  const n=DB.nodes[id];if(!n)return;
+  state.selected=id;
+  document.getElementById('edTitle').value=n.title||'';
+  document.getElementById('edType').value=n.type||'topic';
+  document.getElementById('edContent').value=n.content||'';
+  document.getElementById('edAnswer').value=n.answer||'';
+  updateChips();
+  renderLinkList();
+  fillLinkTarget();
+  // position editor
+  const lc=layoutCache[id];
+  if(lc){
+    const x=(lc.x*NODE_W+lc.level*GAP_X)*state.zoom+state.pan.x+NODE_W;
+    const y=(lc.y)*state.zoom+state.pan.y-NODE_H/2;
+    editor.style.left=Math.min(x,window.innerWidth-360)+'px';
+    editor.style.top=Math.min(Math.max(y,10),window.innerHeight-120)+'px';
+  }else{
+    editor.style.left='60%';editor.style.top='20%';
+  }
+  editor.classList.add('show');
+  renderMap();
+}
+function updateChips(){
+  const n=DB.nodes[state.selected];
+  const g=document.getElementById('chipGood'),b=document.getElementById('chipBad');
+  g.classList.toggle('active',n&&n.status==='good');
+  b.classList.toggle('active',n&&n.status==='wrong');
+}
+document.getElementById('chipGood').onclick=()=>{
+  if(!state.selected)return;
+  DB.nodes[state.selected].status='good';
+  DB.wrong=DB.wrong.filter(id=>id!==state.selected);
+  updateChips();save();renderMap();
+  toast('已标记掌握');
+};
+document.getElementById('chipBad').onclick=()=>{
+  if(!state.selected)return;
+  const id=state.selected;
+  DB.nodes[id].status='wrong';
+  if(!DB.wrong.includes(id))DB.wrong.push(id);
+  updateChips();save();renderMap();
+  toast('已标错，已加入错题本');
+};
+document.getElementById('btnSaveNode').onclick=()=>{
+  if(!state.selected)return;
+  const n=DB.nodes[state.selected];
+  n.title=document.getElementById('edTitle').value.trim()||'未命名';
+  n.type=document.getElementById('edType').value;
+  n.content=document.getElementById('edContent').value;
+  n.answer=document.getElementById('edAnswer').value;
+  save();renderMap();
+  toast('已保存');
+};
+document.getElementById('btnDelNode').onclick=()=>{
+  if(!state.selected)return;
+  const id=state.selected;
+  if(DB.maps[state.map].rootNodeId===id){toast('根节点不能删除');return;}
+  if(!confirm('确认删除该节点及其全部子节点？'))return;
+  removeNodeRecursive(id);
+  // remove links pointing to it
+  Object.keys(DB.nodes).forEach(k=>{DB.nodes[k].links=(DB.nodes[k].links||[]).filter(l=>l!==id);});
+  DB.wrong=DB.wrong.filter(w=>w!==id);
+  state.selected=null;save();closeEditor();
+};
+function removeNodeRecursive(id){
+  nodeChildren(id).forEach(c=>removeNodeRecursive(c.id));
+  const n=DB.nodes[id];
+  if(n&&n.parentId&&DB.nodes[n.parentId]){
+    DB.nodes[n.parentId].children=(DB.nodes[n.parentId].children||[]).filter(c=>c!==id);
+  }
+  delete DB.nodes[id];
+}
+document.getElementById('btnAddChild').onclick=()=>{
+  if(!state.selected)return;
+  const parentId=state.selected;
+  const id=nid();
+  DB.nodes[id]={id,mapId:state.map,parentId,title:'新节点',type:'topic',content:'',answer:'',status:null,links:[],due:null,createdAt:todayStr(),children:[]};
+  DB.nodes[parentId].children=(DB.nodes[parentId].children||[]).concat(id);
+  save();renderMap();
+  // open editor for new node
+  editor.classList.remove('show');
+  selectNode(id);
+};
+document.getElementById('btnAddRoot').onclick=()=>{
+  if(!state.map||!DB.maps[state.map])return;
+  if(DB.maps[state.map].rootNodeId){toast('该导图已有根节点');return;}
+  const id=nid();
+  DB.nodes[id]={id,mapId:state.map,parentId:null,title:DB.maps[state.map].title+' · 根',type:'topic',content:'',answer:'',status:null,links:[],due:null,createdAt:todayStr(),children:[]};
+  DB.maps[state.map].rootNodeId=id;
+  state.selected=id;save();renderMap();selectNode(id);
+};
+
+/* links */
+function allLinkTargets(){
+  const res=[];const current=state.map;
+  Object.values(DB.nodes).forEach(n=>{
+    if(n.id===state.selected)return;
+    const mp=DB.maps[n.mapId];
+    res.push({id:n.id,label:(mp?mp.title+' / ':'')+n.title});
+  });
+  return res;
+}
+function fillLinkTarget(){
+  const sel=document.getElementById('linkTarget');
+  sel.innerHTML='';
+  allLinkTargets().forEach(o=>{const op=document.createElement('option');op.value=o.id;op.textContent=o.label;sel.appendChild(op);});
+}
+function renderLinkList(){
+  const n=DB.nodes[state.selected];
+  const box=document.getElementById('linkList');
+  box.innerHTML='';
+  (n.links||[]).forEach(tid=>{
+    const t=DB.nodes[tid];if(!t)return;
+    const mp=DB.maps[t.mapId];
+    const d=document.createElement('div');
+    d.className='link-item';
+    d.innerHTML=`<span class="ln">⤳ ${esc(mp?mp.title+' · ':'')}${esc(t.title)}</span><span class="rm" data-rm="${tid}">✕</span>`;
+    d.querySelector('.ln').onclick=()=>{
+      // jump: switch to that map & node
+      state.map=t.mapId;state.subject=DB.maps[t.mapId].subjectId;
+      state.selected=t.id;
+      renderSubjects();renderMaps();switchView('mapView');renderMap();
+      selectNode(t.id);
+    };
+    d.querySelector('.rm').onclick=()=>{
+      DB.nodes[state.selected].links=(DB.nodes[state.selected].links||[]).filter(l=>l!==tid);
+      // also remove reverse? we keep symmetric here: remove from target too
+      if(DB.nodes[tid])DB.nodes[tid].links=(DB.nodes[tid].links||[]).filter(l=>l!==state.selected);
+      save();renderLinkList();renderMap();
+    };
+    box.appendChild(d);
+  });
+}
+document.getElementById('btnAddLink').onclick=()=>{
+  const tid=document.getElementById('linkTarget').value;
+  if(!tid||tid===state.selected){toast('请选择目标节点');return;}
+  const n=DB.nodes[state.selected];
+  n.links=(n.links||[]).filter(l=>l!==tid);
+  n.links.push(tid);
+  // bidirectional: add reverse
+  if(DB.nodes[tid]){
+    DB.nodes[tid].links=(DB.nodes[tid].links||[]).filter(l=>l!==state.selected);
+    DB.nodes[tid].links.push(state.selected);
+  }
+  save();renderLinkList();renderMap();
+  toast('已建立双向链接');
+};
+
+/* result popup for examples */
+let curExample=null;
+function openResult(id){
+  const n=DB.nodes[id];if(!n)return;
+  curExample=id;
+  document.getElementById('resTitle').textContent='例题 · '+(n.title||'');
+  document.getElementById('resAnswer').textContent=n.answer||'（未填写答案）';
+  document.getElementById('resultPop').classList.add('show');
+}
+document.getElementById('btnResGood').onclick=()=>{
+  if(curExample){DB.nodes[curExample].status='good';DB.wrong=DB.wrong.filter(id=>id!==curExample);save();renderMap();toast('✓ 做对了，已记录');}
+  document.getElementById('resultPop').classList.remove('show');
+};
+document.getElementById('btnResBad').onclick=()=>{
+  if(curExample){DB.nodes[curExample].status='wrong';if(!DB.wrong.includes(curExample))DB.wrong.push(curExample);save();renderMap();toast('✗ 已加入错题本');}
+  document.getElementById('resultPop').classList.remove('show');
+};
+document.getElementById('resultPop').addEventListener('click',e=>{if(e.target.id==='resultPop')document.getElementById('resultPop').classList.remove('show');});
+
+/* ================= 错题本 ================= */
+function renderWrong(){
+  const box=document.getElementById('wrongList');
+  box.innerHTML='';
+  const list=DB.wrong.map(id=>DB.nodes[id]).filter(Boolean);
+  if(list.length===0){
+    box.innerHTML='<div class="empty">🎉 还没有错题。做例题时标错会自动出现在这里。</div>';
+    return;
+  }
+  list.forEach(n=>{
+    const mp=DB.maps[n.mapId];
+    const d=document.createElement('div');
+    d.className='card-item';
+    d.innerHTML=`<div class="ci-top">
+      <span class="tag subject">${esc(mp?DB.subjects[mp.subjectId]?.name||'未分类':'')}</span>
+      <span class="tag map">${esc(mp?mp.title:'')}</span>
+      <span class="tag wrong">错题</span>
+      <span style="margin-left:auto;font-size:11px;color:#9ca3af">${n.createdAt}</span>
+    </div>
+    <div class="ci-q">${esc(n.title)}</div>
+    ${n.content?`<div class="ci-p">${esc(n.content)}</div>`:''}
+    ${n.answer?`<div class="ci-p" style="color:#b45309">答案：${esc(n.answer)}</div>`:''}`;
+    d.onclick=()=>{
+      // jump to map & node
+      state.map=n.mapId;state.subject=DB.maps[n.mapId].subjectId;state.selected=n.id;
+      renderSubjects();renderMaps();switchView('mapView');renderMap();
+      selectNode(n.id);
+      toast('已跳转到对应导图位置');
+    };
+    box.appendChild(d);
+  });
+}
+
+/* ================= 记忆卡片 + 间隔重复 ================= */
+function getCards(subjectId){
+  let nodes=Object.values(DB.nodes).filter(n=>n.type==='card');
+  if(subjectId){const mps=Object.values(DB.maps).filter(m=>m.subjectId===subjectId).map(m=>m.id);nodes=nodes.filter(n=>mps.includes(n.mapId));}
+  return nodes;
+}
+function renderCardFilters(){
+  const sel=document.getElementById('cardSubjectFilter');
+  const cur=sel.value;
+  sel.innerHTML='<option value="">全部科目</option>';
+  Object.values(DB.subjects).forEach(s=>{const op=document.createElement('option');op.value=s.id;op.textContent=s.name;if(s.id===cur)op.selected=true;sel.appendChild(op);});
+}
+let allCardsMode=false;
+document.getElementById('btnReviewAll').onclick=()=>{allCardsMode=false;startCardSession();};
+document.getElementById('btnShowAll').onclick=()=>{allCardsMode=true;startCardSession();};
+function startCardSession(){
+  const subj=document.getElementById('cardSubjectFilter').value||null;
+  let cards=getCards(subj);
+  if(!allCardsMode){cards=cards.filter(c=>c.due&&c.due<=todayStr());}
+  if(cards.length===0){document.getElementById('cardStack').innerHTML='<div class="empty">没有需要复习的卡片。</div>';return;}
+  state.cardQueue=cards.map(c=>c.id);
+  state.cardIdx=0;state.showAnswer=false;
+  renderCard();
+}
+function renderCard(){
+  const box=document.getElementById('cardStack');
+  if(state.cardIdx>=state.cardQueue.length){
+    box.innerHTML='<div class="empty">🎉 本组卡片复习完成！</div>';
+    return;
+  }
+  const id=state.cardQueue[state.cardIdx];
+  const n=DB.nodes[id];const mp=DB.maps[n.mapId];
+  const due=n.due||todayStr();
+  const overdue=(n.due&&n.due<todayStr());
+  box.innerHTML=`
+    <div class="fc-progress">卡片 ${state.cardIdx+1}/${state.cardQueue.length}</div>
+    <div class="flashcard" id="fcCard">
+      <span class="fc-tag">${esc(mp?mp.title:'')}${overdue?' · 已到期':''}</span>
+      <div class="fc-q">${esc(n.title||'')}</div>
+      ${n.content?`<div class="fc-a">${esc(n.content)}</div>`:''}
+      ${state.showAnswer?`<div class="fc-a" style="border-top:2px solid #fde68a;background:#fffbeb">${esc(n.answer||'(无答案)')}</div>`:''}
+      <div class="hint">点击卡片${state.showAnswer?'':'显示答案'}</div>
+    </div>
+    <div class="fc-controls" id="fcCtrl">
+      ${state.showAnswer?`
+        <button class="fc-again" id="btnAgain">✗ 没记住</button>
+        <button class="fc-done" id="btnKnown">✓ 记住了</button>
+      `:`<button class="fc-next" id="btnFlip">显示答案</button>`}
+    </div>`;
+  document.getElementById('fcCard').onclick=()=>{state.showAnswer=!state.showAnswer;renderCard();};
+  const flip=document.getElementById('btnFlip');
+  if(flip)flip.onclick=()=>{state.showAnswer=true;renderCard();};
+  const again=document.getElementById('btnAgain');
+  if(again)again.onclick=()=>{scheduleCard(id,false);};
+  const known=document.getElementById('btnKnown');
+  if(known)known.onclick=()=>{scheduleCard(id,true);};
+}
+function scheduleCard(id,remember){
+  const n=DB.nodes[id];
+  // simple spaced repetition: interval grows 1,2,4,7,15,30 if remembered; reset to 1 if forgotten
+  let iv=n.interval||1;
+  if(remember){iv=n.interval?Math.min(30,Math.round(n.interval*1.7)):1;}
+  else{iv=1;}
+  n.interval=iv;
+  n.due=addDays(todayStr(),iv);
+  n.lastStudied=todayStr();
+  save();
+  state.cardIdx++;
+  state.showAnswer=false;
+  renderCard();
+}
+
+/* ================= 今日复习 ================= */
+function renderToday(){
+  const d=document.getElementById('todayDate');
+  d.textContent='今天是 '+todayStr()+' · 完成一次导图或错题复习后，可手动记录一次';
+  const today=todayStr();
+  // maps due for review: all maps (simple) — we show today's cards & wrong items
+  const dueCards=getCards().filter(c=>c.due&&c.due<=today);
+  const dueWrong=DB.wrong.map(id=>DB.nodes[id]).filter(Boolean);
+  const grid=document.getElementById('todayGrid');
+  grid.innerHTML='';
+  // cards box
+  const cardBox=document.createElement('div');cardBox.className='tk';
+  cardBox.innerHTML=`<h3>🃏 今日到期卡片 <span class="count">${dueCards.length} 张</span></h3>`;
+  const ul=document.createElement('ul');
+  if(dueCards.length===0)ul.innerHTML='<li style="color:#9ca3af">今天没有到期的卡片</li>';
+  dueCards.slice(0,20).forEach(n=>{
+    const mp=DB.maps[n.mapId];
+    const li=document.createElement('li');
+    li.innerHTML=`<span class="st" style="background:#d97706"></span><span class="nm">${esc(mp?mp.title+' · ':'')}${esc(n.title)}</span><span class="due">${n.due}</span>`;
+    li.onclick=()=>{switchView('cardView');startCardSession();};
+    ul.appendChild(li);
+  });
+  cardBox.appendChild(ul);
+  // wrong box
+  const wBox=document.createElement('div');wBox.className='tk';
+  wBox.innerHTML=`<h3>❌ 错题待复刷 <span class="count">${dueWrong.length} 题</span></h3>`;
+  const wul=document.createElement('ul');
+  if(dueWrong.length===0)wul.innerHTML='<li style="color:#9ca3af">暂无错题</li>';
+  dueWrong.slice(0,20).forEach(n=>{
+    const mp=DB.maps[n.mapId];
+    const li=document.createElement('li');
+    li.innerHTML=`<span class="st" style="background:#dc2626"></span><span class="nm">${esc(mp?mp.title+' · ':'')}${esc(n.title)}</span><span class="due">错题</span>`;
+    li.onclick=()=>{state.map=n.mapId;state.subject=DB.maps[n.mapId].subjectId;state.selected=n.id;renderSubjects();renderMaps();switchView('mapView');renderMap();selectNode(n.id);};
+    wul.appendChild(li);
+  });
+  wBox.appendChild(wul);
+  grid.appendChild(cardBox);grid.appendChild(wBox);
+}
+
+/* ================= 导出/导入 ================= */
+document.getElementById('btnExport').onclick=()=>{
+  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='智学脑图-备份-'+todayStr()+'.json';
+  a.click();
+  toast('已导出备份');
+};
+document.getElementById('btnImport').onclick=()=>{document.getElementById('importFile').click();};
+document.getElementById('importFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(reader.result);
+      if(!data.nodes)throw new Error('bad');
+      DB=data;save();
+      // recompute max uid
+      Object.keys(DB.nodes).forEach(k=>{const m=/^n(\d+)$/.exec(k);if(m)uid=Math.max(uid,parseInt(m[1])+1);});
+      state.subject=Object.keys(DB.subjects)[0]||null;state.map=state.subject?Object.values(DB.maps).find(m=>m.subjectId===state.subject)?.id:null;
+      renderSubjects();renderMaps();switchView('todayView');
+      toast('导入成功');
+    }catch(err){toast('导入失败：文件格式不正确');}
+  };
+  reader.readAsText(f);
+  e.target.value='';
+};
+
+/* ================= helpers ================= */
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+/* ================= init ================= */
+// seed demo data on first run
+function seedDemo(){
+  if(Object.keys(DB.subjects).length>0)return;
+  const s1=sid();DB.subjects[s1]={id:s1,name:'数学',color:'#6366f1'};
+  const m1=mid();DB.maps[m1]={id:m1,subjectId:s1,title:'离散数学',rootNodeId:null};
+  // mk: 便捷建节点
+  const mk=(pid,o)=>{const id=nid();DB.nodes[id]=Object.assign({id,mapId:m1,parentId:pid,type:'topic',content:'',answer:'',status:null,links:[],due:null,createdAt:todayStr(),interval:0,children:[]},o);if(pid&&DB.nodes[pid])DB.nodes[pid].children.push(id);return id;};
+  const root=mk(null,{title:'一阶逻辑 · 作业2',content:'配套：《离散数学（第五版）》耿素云/屈婉玲/张立昂；《离散数学及其应用（原书第8版）》Rosen。\n页码偏移：第五版 PDF=印刷+12；Rosen PDF=印刷+31。'});
+  DB.maps[m1].rootNodeId=root;
+
+  /* ===== 知识块1：量词与谓词基本概念 ===== */
+  const k1=mk(root,{title:'1 量词与谓词基本概念'});
+  mk(k1,{title:'个体词与谓词',content:'个体词=可独立存在的客体（李明、√2）。谓词刻画个体性质/关系。个体常项a,b,c…；个体变项x,y,z…；变项取值范围=个体域（论域）。无特殊声明时=全总个体域（宇宙一切事物）。（第五版2.1节）'});
+  mk(k1,{title:'n元谓词',content:'含n个个体词的谓词叫n元谓词：一元表示性质，二元及以上表示关系。不带个体变项的叫0元谓词，0元谓词常项都是命题。'});
+  mk(k1,{title:'全称量词 ∀',content:'∀对应“一切/所有/任意”。∀xF(x)：个体域里所有个体都有性质F。（第五版书p39）'});
+  mk(k1,{title:'存在量词 ∃',content:'∃对应“存在/至少有一个”。∃xF(x)：个体域中存在个体具有性质F。'});
+  mk(k1,{title:'量词优先级',content:'量词∀∃比所有逻辑联结词优先级都高。∀xP(x)∨Q(x) 表示 (∀xP(x))∨Q(x)。（Rosen书p40）'});
+  mk(k1,{title:'例题·0元谓词符号化',type:'example',content:'用0元谓词符号化3个命题：①2是素数且是偶数 ②如果2大于3则2大于4 ③若张明比李民高、李民比赵亮高，则张明比赵亮高。（第五版例2.1）',answer:'①F(a)∧G(a) ②L(a,b)→L(a,c) ③H(a,b)∧H(b,c)→H(a,c)。设F:x是素数,G:x是偶数,L:x大于y,H:x比y高。'});
+  mk(k1,{title:'例题·∀xN(x)含义',type:'example',content:'N(x)：计算机x被连接到网络，论域=校园内所有计算机。∀xN(x)是什么意思？（Rosen例11）',answer:'校园里的每一台计算机都连接到网络。'});
+  mk(k1,{title:'例题·∃xP(x)真值',type:'example',content:'P(x)：“x>3”，论域为实数。∃xP(x)的真值？（Rosen例13）',answer:'为真。因为x>3有时为真（如x=4）。'});
+  mk(k1,{title:'PPT(2)(3)(6)·翻译',type:'example',content:'①2大于3当且仅当2大于4 ②一切事物都是发展变化的 ③存在会说话的机器人。',answer:'①G(2,3)↔G(2,4) ②∀xD(x)，D:x发展变化，全总论域 ③∃x(R(x)∧T(x))，存在A是B用∧'});
+
+  /* ===== 知识块2：自然语言→谓词公式翻译 ===== */
+  const k2=mk(root,{title:'2 翻译：∀配→，∃配∧'});
+  mk(k2,{title:'特性谓词',content:'在全总个体域下翻译“人”等概念必须引入特性谓词分离对象：“所有人都要死”=∀x(M(x)→F(x))；“有的人活百岁以上”=∃x(M(x)∧G(x))。（第五版书p39）'});
+  mk(k2,{title:'黄金法则',type:'card',content:'所有A都是B → ∀x(A(x)→B(x))\n存在A是B → ∃x(A(x)∧B(x))',due:todayStr(),interval:1});
+  mk(k2,{title:'为什么不能换',content:'∀x(S(x)∧C(x))表示“所有人都是班学生且学过微积分”太夸张；∃x(S(x)→M(x))当论域有非班学生时自动为真，变废话。（Rosen例23/24）'});
+  mk(k2,{title:'例题·凡有理数可表成分数',type:'example',content:'翻译“凡有理数均可表成分数”与“有的有理数是整数”。分(a)个体域=有理数 (b)个体域=实数(引入R(x):x是有理数) (c)全总个体域。（第五版例2.2）',answer:'(a)不用特性谓词：∀xF(x)、∃xG(x) (b)(c)：∀x(R(x)→F(x))、∃x(R(x)∧G(x))'});
+  mk(k2,{title:'例题·班上学过微积分',type:'example',content:'表达“班上的每个学生都学过微积分”。论域=班上学生：∀xC(x)；论域=所有人需引入S(x):x在这个班上。（Rosen例23）',answer:'∀x(S(x)→C(x))。不能写成∀x(S(x)∧C(x))。'});
+  mk(k2,{title:'例题·学生去过墨西哥',type:'example',content:'表达“这个班上的某个学生去过墨西哥”。M(x):去过墨西哥，S(x):班上的学生，论域所有人。（Rosen例24）',answer:'∃x(S(x)∧M(x))。不能写∃x(S(x)→M(x))：论域有非班学生时假→假自动为真。第二句“每人去过加拿大或墨西哥”：∀x(S(x)→(C(x)∨M(x)))'});
+  mk(k2,{title:'例题·狮子例子',type:'example',content:'前提“所有狮子都凶猛”“有些狮子不喝咖啡”，结论“有些凶猛动物不喝咖啡”。P:x是狮子，Q:凶猛，R:喝咖啡，论域所有动物。（Rosen例26）',answer:'∀x(P(x)→Q(x))；∃x(P(x)∧¬R(x))；∃x(Q(x)∧¬R(x))。'});
+  mk(k2,{title:'PPT(1)(4)(9)·翻译',type:'example',content:'①除非李健是东北人，否则他一定怕冷 ②凡有理数都可表示成分数 ③过平面上两点有且仅有一条直线通过。',answer:'①¬N(a)→C(a)，N:东北人,C:怕冷 ②∀x(R(x)→F(x)) ③∀x∀y(P(x)∧P(y)∧x≠y→∃!z(L(z)∧T(z,x,y)))'});
+
+  /* ===== 知识块3：量词否定 ===== */
+  const k3=mk(root,{title:'3 量词否定与德·摩根律'});
+  mk(k3,{title:'量词否定等值式',content:'“不是所有”=“存在不”：¬∀xA(x)⇔∃x¬A(x)；“不存在”=“所有都不”：¬∃xA(x)⇔∀x¬A(x)。称量词的德·摩根律。（第五版定理2.1 / Rosen表2）'});
+  mk(k3,{title:'量词德·摩根律',type:'card',content:'¬∀xA(x) ⇔ ∃x¬A(x)\n¬∃xA(x) ⇔ ∀x¬A(x)',due:todayStr(),interval:1});
+  mk(k3,{title:'蕴涵式与否定',content:'¬∀x(P(x)→Q(x)) ⇔ ∃x(P(x)∧¬Q(x))。先把¬移过量词，再对蕴涵取否定 ¬(p→q)⇔p∧¬q。（Rosen例22）'});
+  mk(k3,{title:'例题·否定词的翻译',type:'example',content:'翻译（全总个体域）：①凡偶数均能被2整除 ②存在着偶素数 ③没有不吃饭的人 ④素数不全是奇数。（第五版例2.4）',answer:'①∀x(F(x)→G(x)) ②∃x(F(x)∧G(x)) ③¬∃x(M(x)∧¬F(x))⇔∀x(M(x)→F(x)) ④¬∀x(F(x)→G(x))⇔∃x(F(x)∧¬G(x))'});
+  mk(k3,{title:'例题·不是所有人都爱吃辣椒',type:'example',content:'“不是所有人都爱吃辣椒”，4种符号化哪个正确？（第五版例2.15）',answer:'(2)(4)正确：¬∀x(F(x)→G(x)) 与 ∃x(F(x)∧¬G(x))。(1)错：∀x(F∧G)表示“所有人是人且爱吃辣椒”；(3)错：¬∃x(F∧G)表示“没有人爱吃辣椒”。'});
+  mk(k3,{title:'例题·证明等价',type:'example',content:'证明 ¬∀x(P(x)→Q(x)) 与 ∃x(P(x)∧¬Q(x)) 逻辑等价。（Rosen例22）',answer:'¬∀x(P→Q)⇔∃x¬(P→Q)（量词德摩根）⇔∃x(P∧¬Q)（蕴涵否定）。即作业2第3题(2)：¬[∀x∃y(P→Q)]⇔∃x∀y(P∧¬Q)'});
+  mk(k3,{title:'例题·诚实政治家',type:'example',content:'“有一个诚实的政治家”与“所有美国人都吃芝士汉堡”的否定。（Rosen例20）',answer:'∃xH(x)否定→∀x¬H(x)（“每个政治家都不诚实”）；∀xC(x)否定→∃x¬C(x)（“一些美国人不吃芝士汉堡”）'});
+  mk(k3,{title:'PPT(5)(7)(3)·否定',type:'example',content:'①没有不能表示成分数的有理数 ②不存在比所有火车快的汽车 ③求¬[∃x∃y¬P(x,y)∧∀x∀yQ(x,y)]的否定式。',answer:'①¬∃x(R(x)∧¬F(x))⇔∀x(R(x)→F(x)) ②¬∃x(C(x)∧∀y(T(y)→F(x,y))) ③∀x∀yP(x,y)∨∃x∃y¬Q(x,y)'});
+
+  /* ===== 知识块4：唯一性量词∃! ===== */
+  const k4=mk(root,{title:'4 唯一性量词 ∃!'});
+  mk(k4,{title:'唯一性量词定义',content:'∃!xP(x)表示“存在唯一x使P为真”（恰好一个/有且仅有一个）。可只用∀和∃表达。（Rosen书p39）'});
+  mk(k4,{title:'唯一性量词展开',type:'card',content:'∃!xP(x) ⇔ ∃x(P(x) ∧ ∀y(P(y)→y=x))\n（存在一个满足P，且任何满足P的y都等于它）',due:todayStr(),interval:1});
+  mk(k4,{title:'例题·x-1=0',type:'example',content:'∃!x(x-1=0)，论域为实数，表示什么？是真语句吗？（Rosen正文）',answer:'存在唯一的实数x使x-1=0，真，因为x=1唯一。展开：∃x((x-1=0)∧∀y((y-1=0)→y=x))'});
+  mk(k4,{title:'例题·最好的朋友',type:'example',content:'翻译“每个人恰好有一个最好的朋友”。B(x,y):y是x最好的朋友，论域所有人。（Rosen例12）',answer:'∀x∃y(B(x,y)∧∀z((z≠y)→¬B(x,z)))；或直接写 ∀x∃!y B(x,y)'});
+  mk(k4,{title:'PPT(8)(9)·唯一',type:'example',content:'①只有一个北京 ②过平面上两点有且仅有一条直线通过。',answer:'①∃!xB(x)，展开∃x(B(x)∧∀y(B(y)→y=x)) ②∀x∀y(P(x)∧P(y)∧x≠y→∃!z(L(z)∧T(z,x,y)))'});
+
+  /* ===== 知识块5：有限论域消去量词 ===== */
+  const k5=mk(root,{title:'5 有限论域消去量词'});
+  mk(k5,{title:'消去量词规则',content:'个体域为有限集D={a₁,…,aₙ}时：∀xA(x)⇔A(a₁)∧…∧A(aₙ)；∃xA(x)⇔A(a₁)∨…∨A(aₙ)。把一阶逻辑公式转成命题逻辑公式。（第五版书p40）'});
+  mk(k5,{title:'消去量词·卡片',type:'card',content:'有限域D={a₁..aₙ}：\n∀xA(x) ⇔ A(a₁)∧…∧A(aₙ)\n∃xA(x) ⇔ A(a₁)∨…∨A(aₙ)',due:todayStr(),interval:1});
+  mk(k5,{title:'分配律注意',content:'∀对∧可分配：∀x(P∧Q)⇔∀xP∧∀xQ；∃对∨可分配：∃x(P∨Q)⇔∃xP∨∃xQ。但∀对∨、∃对∧不分配。（Rosen书p40-41）'});
+  mk(k5,{title:'例题·∀xP真值',type:'example',content:'P(x):x²<10，论域{1,2,3,4}。∀xP(x)的真值？（Rosen例15）',answer:'∀xP(x)⇔P(1)∧P(2)∧P(3)∧P(4)，因P(4):“16<10”为假，故∀xP(x)为假。'});
+  mk(k5,{title:'例题·∃xP真值',type:'example',content:'P(x):x²>10，论域{1,2,3,4}。∃xP(x)的真值？（Rosen例16）',answer:'∃xP(x)⇔P(1)∨P(2)∨P(3)∨P(4)，因P(4):“16>10”为真，故为真。'});
+  mk(k5,{title:'PPT2(1)(2)·消去量词',type:'example',content:'消去量词：①∀x∀yP(x,y) ②∃x∀yP(x,y)，论域x∈{1,2,3}，y∈{1,2}。',answer:'①P(1,1)∧P(1,2)∧P(2,1)∧P(2,2)∧P(3,1)∧P(3,2) ②[P(1,1)∧P(1,2)]∨[P(2,1)∧P(2,2)]∨[P(3,1)∧P(3,2)]'});
+
+  /* ===== 知识块6：含量词等值演算 ===== */
+  const k6=mk(root,{title:'6 含量词等值演算'});
+  mk(k6,{title:'量词分配等值式',content:'∀对∧分配、∃对∨分配成立；∀对∨、∃对∧不成立（例2.10：取F:x是奇数,G:x是偶数，∀x(F∨G)真但∀xF∨∀xG假）。（第五版定理2.3）'});
+  mk(k6,{title:'量词分配律·卡片',type:'card',content:'∀x(A∧B) ⇔ ∀xA ∧ ∀xB\n∃x(A∨B) ⇔ ∃xA ∨ ∃xB',due:todayStr(),interval:1});
+  mk(k6,{title:'前束范式',content:'所有量词移到最前、后是不含量词的谓词公式：Q₁x₁Q₂x₂…QₖxₖB。任何合式公式都存在等价的前束范式，用换名规则+定理2.1~2.3求。（第五版定义2.11）'});
+  mk(k6,{title:'例题·证明分配',type:'example',content:'证明 ∀x(P(x)∧Q(x)) 与 ∀xP(x)∧∀xQ(x) 逻辑等价。（Rosen例19）',answer:'两个方向：①若∀x(P∧Q)真，则每个a满足P(a)∧Q(a)，故∀xP、∀xQ都真；②反之亦然。即作业2第4题套路（证∃对∨分配）。'});
+  mk(k6,{title:'例题·xy=1的否定',type:'example',content:'表达 ∀x∃y(xy=1) 的否定，使量词前无否定词。（Rosen例14）',answer:'¬∀x∃y(xy=1)⇔∃x¬∃y(xy=1)⇔∃x∀y¬(xy=1)⇔∃x∀y(xy≠1)，即“存在x使对所有y有xy≠1”。与作业2第3题(1)思路一致。'});
+  mk(k6,{title:'PPT4/5·证明',type:'example',content:'证明：①∃x(P∨Q)⇔∃xP∨∃xQ ②¬∃x∃y(F∧G∧L)⇔∀x∀y(F∧G→¬L) ③¬∃x(N∧∀y(N→G))⇔∀x(N→∃y(N∧¬G))。',answer:'①左右互相推出，即定理2.3(2)。②¬∃x∃y⇔∀x∀y¬(F∧G∧L)⇔∀x∀y(¬(F∧G)∨¬L)⇔∀x∀y((F∧G)→¬L)。③¬∃x(N∧∀y(N→G))⇔∀x(¬N∨∃y(N∧¬G))⇔∀x(N→∃y(N∧¬G))'});
+
+  state.subject=s1;state.map=m1;
+  save();
+}
+seedDemo();
+renderSubjects();
+renderMaps();
+switchView('todayView');
+</script>
+</body>
+</html>
